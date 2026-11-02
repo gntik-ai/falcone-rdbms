@@ -21,9 +21,13 @@ SQL remains available for application queries and compatible schema operations; 
 | Object storage bindings | `POST /v1/.../object-stores` | Endpoint/region/bucket/secret reference; validate provider capabilities |
 | Objects | `POST /v1/.../objects:beginUpload`, `POST /v1/.../objects/{id}:seal` | Multipart lifecycle with integrity verification |
 | Observability | `GET /v1/.../statistics`, `POST /v1/.../queries:explain` | Safe plans and resource information without raw sensitive values |
+| Native storage status | `GET /v1/storage-domains/{id}` | Operator-scoped format versions, WAL/checkpoint positions, file/cache/compaction metrics; no raw tenant values |
+| Storage verification/maintenance | `POST /v1/storage-domains/{id}:verify`, `POST /v1/storage-domains/{id}:compact` | Budgeted resumable jobs under operator authorization; preserve snapshot/backup pins; no online destructive salvage |
 | Capabilities | `GET /v1/capabilities` | Actual supported types/features/limits/version, not marketing defaults |
 
 Administrative mutations use an idempotency key bound to principal, scope and request hash. Reusing a key with different content fails. An `If-Match`/expected resource version prevents lost updates. Preview plans bind the catalog version, principal, capability/policy version and content hash; apply reauthorizes and rejects stale plans.
+
+Native storage reports its owned format major/minor/features and compatible reader/writer versions. Operator file-verification controls are distinct from tenant query permissions. The storage API never allows a caller to bypass WAL durability, overwrite a live file, remove a pin or force-drop protected history. Format conversion is a separately preflighted upgrade job; physical byte inspection/salvage follows the offline tools contract in [native storage](native-storage.md).
 
 Return `202` plus an operation ID for long jobs. Cancellation does not promise rollback after a commit point. Errors contain stable code, retryability, request ID, violations and current version where safe. Never report a job complete merely because it was accepted by a worker.
 

@@ -4,7 +4,9 @@ Status: proposal; all guarantees below are implementation requirements and relea
 
 ## Product boundary
 
-Falcone RDBMS owns SQL evaluation, schema/catalog management, authorization, transactions, distributed indexes, native shard placement, replication, recovery and operational APIs. It embeds persistence/consensus libraries but does not require PostgreSQL, TiKV or FoundationDB as its runtime backend.
+Falcone RDBMS owns SQL evaluation, schema/catalog management, authorization, transactions, distributed indexes, native shard placement, replication, recovery and operational APIs. **Storage-engine and disk-format ownership is a confirmed user requirement.** Falcone implements its own persistence code in Rust: WAL, table files, manifest/checkpoints, cache, compaction, integrity verification and recovery. Third-party database/storage engines are excluded as shipping backends. Qualified general-purpose libraries and a consensus algorithm core remain eligible; Falcone owns their storage integration.
+
+The [native storage design](native-storage.md) specifies this boundary and the proposed first-party LSM layout. Disk-format details remain an RFC until M0 evidence freezes a version; the ownership requirement is already decided.
 
 The initial production target is transactional BaaS workloads in one region across three independent failure domains. Scale connection gateways and query workers independently of storage. S3 initially stores large objects and backups; it is not the synchronous storage path for ordinary row commits.
 
@@ -50,7 +52,9 @@ Catalog entries include columns/types, constraints, indexes, placement, policy v
 
 ## Persistence and consensus
 
-Use a bounded number of local RocksDB instances/column families per storage process, rather than allocating a full RocksDB instance per tiny tenant or shard. Prefixes identify logical shards. Bound memtables, block cache, compaction concurrency and snapshot memory. Measure the fairness cost of shared storage and offer dedicated node pools for large tenants.
+Use Falcone's first-party storage engine with a bounded number of storage domains per process, rather than allocating a complete engine per tiny tenant or shard. The initial design is an LSM with ordered memtables, immutable sorted table blocks, a versioned manifest, WAL, Bloom filters and a block cache. Prefixes identify logical shards; immutable output files remain within a shard/key-range boundary to simplify movement and snapshots. Domains share bounded pools for memtables/cache/compaction without giving every shard a fixed large allocation. Measure the fairness cost of shared storage and offer dedicated node pools for large tenants.
+
+Falcone defines and maintains the file format and logical key encoding. It does not reuse RocksDB SST/WAL formats or require its libraries. M0 compares the first-party LSM prototype with a small first-party B+tree prototype on representative workloads; changing the layout does not relax ownership.
 
 Each shard is a Raft replication group, normally three voters on three distinct hosts/failure domains. A majority is required for writes. Membership changes use a qualified joint-consensus/learner procedure; a routing epoch alone is not a substitute for consensus fencing. Replicas also serve checksum audits and snapshot recovery.
 
@@ -58,9 +62,9 @@ Durability contract:
 
 1. A shard leader proposes deterministic commands, never reevaluating nondeterministic SQL independently on replicas.
 2. Required log entries are durably persisted on a quorum before commit acknowledgement.
-3. Applying a command changes row/index/intent state and its applied-log index atomically in a local write batch.
+3. Applying a command changes row/index/intent state and its applied-log index atomically through Falcone's own bounded `ApplyBatch` and engine WAL. Local engine sequence numbers, Raft indexes and SQL transaction timestamps are distinct coordinates.
 4. Replay after a crash is idempotent. A snapshot contains its exact shard descriptor, schema dependencies, transaction state and applied index.
-5. Log truncation happens only after a durable recoverable checkpoint; the initial implementation keeps conservative local WAL behavior. Eliminating duplicate logging is a later measured optimization.
+5. Log truncation happens only after a durable recoverable checkpoint and all applicable replication/backup/CDC obligations permit it. The initial design keeps separate first-party consensus and engine WAL streams with explicit replay fences. Removing duplicate persistence requires a later protocol design and crash-test evidence, not disabling a WAL by configuration.
 
 Use MVCC versions for consistent historical reads, backups and recovery. Track active transactions, protected snapshot timestamps, backups and CDC retention before collecting old versions. Long-lived snapshots have explicit limits; storage exhaustion must throttle/reject work before corrupting durability.
 
@@ -152,6 +156,6 @@ The engine prioritizes consistent acknowledged data under partition. It does not
 
 ## Proposed module boundaries
 
-Rust workspace crates: `types`, `catalog`, `sql`, `planner`, `executor`, `transactions`, `storage`, `replication`, `sharding`, `protocol-pg`, `api-admin`, `auth-policy`, `geo`, `objects`, `cdc`, `backup`, `telemetry`, `simulation`, and `testkit`. Start with coarse modules and split crates where compilation and interfaces justify it; this is not an instruction to create empty scaffolding for every module.
+Rust workspace crates: `types`, `catalog`, `sql`, `planner`, `executor`, `transactions`, `storage`, `replication`, `sharding`, `protocol-pg`, `api-admin`, `auth-policy`, `geo`, `objects`, `cdc`, `backup`, `telemetry`, `simulation`, and `testkit`. Within first-party `storage`, define `format`, `io`, `wal`, `memtable`, `table`, `manifest`, `cache`, `compaction`, `recovery` and `inspector` modules. Start with coarse modules and split crates where compilation and interfaces justify it; this is not an instruction to create empty scaffolding for every module.
 
 Maintain versioned disk/wire/catalog formats, capability negotiation, golden encoding fixtures and a mixed-version support matrix. A destructive format upgrade requires a tested forward plan and defined downgrade boundary.

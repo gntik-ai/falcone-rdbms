@@ -21,8 +21,11 @@ Publish a machine-readable feature matrix and certify specific driver versions. 
 | Search | Exact vector distance pilot; ANN/full-text in expansion | Existing pgvector-dependent workspaces stay on PostgreSQL until required semantics are certified |
 | Extensions/procedural code | Feature inventory and unsupported-feature errors | No PostgreSQL extension ABI, PL/pgSQL, user triggers or arbitrary C extensions initially |
 | Replication | Falcone-native durable change stream | No initial PostgreSQL WAL/physical replication protocol compatibility |
+| Persistent storage | First-party Falcone disk/WAL/table/manifest formats with their own versioned contract | No PostgreSQL, RocksDB or LevelDB physical file compatibility; import through supported logical migration/export paths |
 
 The unsupported-feature report is a hard migration gate. A connection that succeeds but misinterprets a type, collation or SQL statement is a failure, not partial success.
+
+Storage-engine ownership is a confirmed requirement. PostgreSQL migration does not copy source pages or WAL into Falcone's engine as native files. Logical source changes are decoded, validated and written through the first-party storage/transaction path. Native backups additionally bind Falcone file-format/codec/key versions; see [native storage](native-storage.md) for compatibility and conversion gates.
 
 ## Falcone integration changes
 

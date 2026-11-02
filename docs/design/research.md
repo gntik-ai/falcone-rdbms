@@ -51,21 +51,28 @@ Existing Falcone Node.js services remain outside the database engine; gRPC is th
 
 ## Build/reuse decision
 
+**Confirmed user decision: own both the storage engine and its disk format.** This supersedes the earlier RocksDB embedding recommendation. External engines remain behavioral/performance references; implementing storage ownership is in the initial delivery scope, not a future replacement project.
+
 | Option | Assessment |
 | --- | --- |
 | Wrap PostgreSQL/Citus | Fastest route to a custom managed service, but does not achieve an independent RDBMS engine |
 | Build SQL on externally deployed TiKV/FoundationDB | Reduces persistence/transaction work; still introduces a separately operated database dependency |
 | Fork an entire distributed RDBMS | Substantial inherited behavior, language and upgrade obligations; licensing and architecture constrain autonomy |
-| **Own engine with embedded components** | Recommended balance: first-party SQL, catalog, transactions, shards, APIs and integration; qualify lower-level libraries |
-| Rewrite every storage and consensus primitive | Highest risk and validation burden; no user requirement justifies it initially |
+| Own relational engine on an embedded third-party storage engine | Does not meet the confirmed storage ownership requirement; excluded as the shipping design |
+| **Own relational engine, storage engine and disk format** | Selected boundary: first-party Rust persistence, recovery, table organization and maintenance; reuse qualified general-purpose primitives |
+| Implement every consensus/crypto/compression primitive from scratch | Not required by storage ownership. Qualified primitives remain eligible; Falcone implements their persistence integration and format contracts |
 
-Candidate components, **not approved pinned dependencies**:
+Storage-layout recommendation: start with a first-party LSM because immutable files and ordered versioned keys fit the proposed shard/MVCC design. This is an architectural hypothesis; M0 compares it with a first-party B+tree prototype, including read latency, updates, compaction/write amplification and crash behavior. The decision selects a layout, not an external engine. See [native storage and disk format](native-storage.md).
 
-- **RocksDB** for local LSM persistence. Embedded C++ through a narrow Rust interface; choose its Apache-2.0 licensing option and record notices [S28]. It provides neither Falcone's distributed transactions nor SQL semantics. A pure-Rust storage engine is a later interchangeable experiment, not a prerequisite.
+Reference systems and candidate components, **not approved pinned dependencies**:
+
+- **RocksDB / LevelDB** as references for ordered storage, maintenance tradeoffs and benchmark baselines [S28, S36–S38]. Their code, WAL/SST formats and engine binaries are not the storage implementation or compatibility target. Falcone owns a separately specified format and implementation.
 - **raft-rs** as a candidate Rust consensus core [S29]. Falcone still implements transport, durable logs, snapshots, membership changes, scheduling and recovery. Qualification includes maintenance, API suitability and fault tests at a pinned revision.
 - **Apache Arrow / DataFusion** for batch representation and possibly analytical operators [S30]. Do not assume its SQL support supplies an OLTP transaction engine, PostgreSQL semantics or tenant authorization. Keep a dedicated OLTP execution path initially.
 - **GeoRust** for candidate geometry primitives and algorithms [S31]. Qualify each supported algorithm; projection or geodesic dependencies require separate review. Whole-PostGIS compatibility is not implied.
-- Candidate Tokio, tonic, rustls, PostgreSQL protocol, S3 client and SQL-parser crates require exact-version, security, license, behavior and maintenance qualification in E01 before selection.
+- Candidate Tokio, tonic, rustls, checksum/compression/cryptography primitives, PostgreSQL protocol, S3 client and SQL-parser crates require exact-version, security, license, behavior and maintenance qualification in E01 before selection. An embedded database disguised behind a Rust wrapper does not meet the ownership boundary. Storage-format parsing and persistence state machines remain first-party code.
+
+The research adds explicit persistence references: LevelDB documents log framing and block-indexed table structures; PostgreSQL documents write-ahead ordering and grouped log flushes; SQLite's atomic-commit discussion identifies filesystem/power-loss assumptions. These inform Falcone's independent durability contracts and fault tests; they do not prove the proposed implementation correct [S36–S40].
 
 The first-party source-license recommendation is Apache-2.0, subject to repository-owner acceptance. No license grant is created by this document. Preserve upstream notices and record exact source/version/file licenses. A rewrite into another language does not automatically remove upstream license obligations.
 
@@ -110,5 +117,10 @@ Links were consulted on 2 November 2026. “stable/current” pages are moving r
 | S33 | [S3 multipart upload and checksum behavior](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html) |
 | S34 | [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) |
 | S35 | [PostgreSQL logical replication restrictions](https://www.postgresql.org/docs/current/logical-replication-restrictions.html) |
+| S36 | [LevelDB implementation organization](https://github.com/google/leveldb/blob/main/doc/impl.md) |
+| S37 | [LevelDB log framing](https://github.com/google/leveldb/blob/main/doc/log_format.md) |
+| S38 | [LevelDB table format](https://github.com/google/leveldb/blob/main/doc/table_format.md) |
+| S39 | [SQLite atomic commit and hardware assumptions](https://www.sqlite.org/atomiccommit.html) |
+| S40 | [PostgreSQL write-ahead logging](https://www.postgresql.org/docs/current/wal-intro.html) |
 
 The architecture, targets, roadmap and backlog in the accompanying documents are proposed Falcone designs derived from these observations, not claims that upstream systems implement the exact combination.

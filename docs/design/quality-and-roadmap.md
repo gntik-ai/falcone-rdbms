@@ -6,14 +6,16 @@ All numeric values here are **proposed engineering targets**, not measured resul
 
 | Tier | Required scope |
 | --- | --- |
-| M0 feasibility | Repository contract; licensed/versioned component candidates; Falcone compatibility inventory; transaction/shard state-machine models; reproducible harness |
-| M1 local alpha | Local durability/MVCC; bounded SQL subset; single-node serializable behavior; authenticated tenant isolation; JSON management; driver smoke certification |
+| M0 feasibility | Confirmed native-storage ownership; first-party LSM/B+tree prototype comparison; disk-format and durability RFC; qualified primitive libraries; Falcone compatibility inventory; transaction/shard/persistence models; reproducible harness |
+| M1 local alpha | First-party WAL/table/manifest/cache/compaction implementation with crash recovery; integrated local MVCC; bounded SQL subset; single-node serializable behavior; authenticated tenant isolation; JSON management; driver smoke certification |
 | M2 distributed alpha | Three-domain replicated shards; cross-shard transactions/constraints; failover; safe splitting/movement; load admission and connection scale |
 | M3 constrained beta | Named spatial subset; managed S3 objects; coordinated backups/PITR; committed CDC; Falcone integration; supported-workspace migration rehearsal |
 | M4 production candidate | Independent correctness/security review; fault campaign; sustained workload/failover tests; verified restore/upgrade; published compatibility/SLO limits |
 | M5 expansion | Multi-region/locality; object-backed analytical tier; search/ANN; advanced SQL/GIS and development branches |
 
 Do not move a user baseline requirement into an indefinite future: native sharding and high client concurrency are M2, SQL-free administration starts at M1, and geospatial plus S3 large objects are mandatory for M3. Full compatibility with top-tier engines is not a realistic first-release criterion; the supported relational subset must still satisfy integrity and recovery guarantees.
+
+Native storage and format ownership is also a baseline requirement, delivered from M1 onward. The [storage-specific gates](native-storage.md) and E19–E23 cover implementation work formerly delegated to an embedded engine. E02 verifies integration of those components with row/index/MVCC semantics; it is not a second storage implementation.
 
 ## Benchmark plan
 
@@ -35,6 +37,8 @@ Connection capacity math must include all layers. Even 32 KiB of incremental use
 
 Run: read-heavy and balanced point workloads; insert-heavy sequential/random keys; bank-transfer invariants; skewed hot rows; tenant skew; joins with/without colocation; range scans; large result/slow-reader cases; repeated connect/disconnect; small and large blobs; mixed analytical/OLTP contention. Data must exceed cache in at least one scenario. Benchmark with synchronous durability, replication and TLS enabled. Publish p50/p95/p99, throughput, error/abort rates, queue times, resource use, compaction and cost per workload; do not publish a standalone flattering TPS number.
 
+Add storage-only baselines before SQL benchmarks: equivalent durable batches and ordered lookups against a simple reference model and separate benchmark installations of established engines. Record flush/fsync latency, WAL bytes per logical byte, compaction write amplification, live/retained/temp space, cache hit rate, file count and recovery throughput. Compare the first-party LSM/B+tree prototypes on equal correctness/settings; a competitor engine must not become a hidden fallback in release binaries.
+
 ## Correctness and reliability gates
 
 - Deterministic simulation from the first storage/transaction milestone: controlled clocks, network, disks and scheduler; save failing seeds. Model-check transaction decisions, topology transitions and GC/pin races separately.
@@ -45,6 +49,8 @@ Run: read-heavy and balanced point workloads; insert-heavy sequential/random key
 - Cross-tenant negative tests across SQL, JSON, gRPC, native protocol, indexes, errors, object URLs, CDC, backups and restored data. Test credential/policy changes during long sessions.
 - Backup restoration into a clean cluster, not just successful uploads; verify relational invariants and every protected object. Test KMS/Secrets recovery dependencies and key rotation.
 - At least a 7-day mixed-workload soak and repeated restart/upgrade campaigns for M4; longer campaigns as volume and risk justify. No unresolved critical correctness/security issue passes a release gate.
+- Native-format golden fixtures and fuzzing cover every file kind, feature bit, length/offset and checksum; an independent reference decoder/model checks canonical encodings. Power-loss simulation includes dirty OS buffers, short writes, failed syncs and rename/directory durability. `kill -9` alone is not power-loss coverage.
+- Verify manifest publication/reclamation, partial flush watermarks, WAL segment gaps, torn tails, corrupt committed data, compaction tombstone resurrection, cache identity reuse and double-log replay fences. Unsupported versions/corruption fail explicitly; no fallback to an older root may silently lose acknowledged writes.
 
 ## Operations and observability
 
@@ -58,15 +64,17 @@ Runbooks cover lost quorum, bad disk, metadata restore, unknown transactions, ru
 
 ## Delivery capacity and decision gates
 
-This is a new distributed database product. A credible team needs storage/consensus, transactions/query processing, Rust/networking, SQL compatibility, reliability/testing, and Falcone integration expertise. Some roles can overlap, but correctness review must be independent of the author of the protocol.
+This is a new distributed database product with a first-party storage engine and file format. A credible team needs persistent-format/WAL/recovery, cache/compaction/I/O, consensus, transactions/query processing, Rust/networking, SQL compatibility, reliability/testing, and Falcone integration expertise. Some roles can overlap, but correctness review must be independent of the author of the protocol.
 
-A production-grade engine is a multi-stage, potentially multi-year effort; agent-generated code does not replace protocol validation or operating evidence. Do not commit a release date until M0 measures reuse feasibility and compatibility scope. If time-to-production becomes the overriding constraint, explicitly reconsider an engine built on a qualified external transactional store instead of quietly changing the architecture.
+A production-grade engine is a multi-stage, potentially multi-year effort; agent-generated code does not replace protocol validation or operating evidence. Do not commit a release date until M0 measures native-storage feasibility, recovery costs and compatibility scope. Owning persistence adds a critical path for format, WAL, files, cache, compaction, recovery and upgrades. If delivery constraints tighten, reduce SQL/expansion scope or stage milestones; do not silently replace the confirmed ownership requirement with a third-party engine.
 
 Open decisions with recommended defaults:
 
 | Decision | Proposed default | Close by |
 | --- | --- | --- |
-| First-party language / embedded C++ | Rust engine, qualified RocksDB embedding | M0 |
+| Storage ownership | Confirmed: first-party Rust engine and Falcone disk format; external engines are reference/benchmark tools only | Decided by user |
+| Physical layout and format | First-party LSM proposed; compare first-party B+tree; freeze a versioned disk-format RFC and recovery model | M0 |
+| Primitive libraries | Qualify I/O, checksum/compression/crypto, codecs and consensus core; Falcone owns persistence integration | M0 |
 | Source license | Apache-2.0 proposal; owner acceptance required before adding a license grant | M0 |
 | Transaction method | Strict 2PL + MVCC + replicated 2PC; optimize only after correctness evidence | M0 protocol review |
 | First SQL/client profile | Falcone Node `pg` workload and defined SQL subset | M0 |

@@ -10,7 +10,7 @@ Publish a machine-readable feature matrix and certify specific driver versions. 
 | --- | --- | --- |
 | Wire protocol | Startup/TLS/auth, simple and extended queries, bind/execute, cancellation, errors, transactions | Certify Node `pg` first, then selected Python/JDBC/Go/Rust drivers; no blanket compatibility |
 | Types | bool, signed integers, exact decimal, float, UTF-8 text, byte arrays, UUID, date/time/timestamptz, JSON | Freeze overflow, NaN, NULL, timezone, decimal and collation semantics; SQL JSON compatibility does not imply PostgreSQL jsonb binary format |
-| Queries | CRUD, upsert subset, joins, aggregates, ordering, paging; common non-recursive CTEs and windows before wider certification | Recursive CTEs, broad function parity, exotic operators and planner equivalence are later |
+| Queries | Core M1–M2: CRUD, upsert subset, joins, aggregates, ordering, paging, bounded execution and explain | Non-recursive CTEs/windows and broader SQL are demand-driven certification additions; recursive CTEs, broad function parity and exotic operators are later |
 | Integrity | PK, NOT NULL, UNIQUE, CHECK, FK; scoped global indexes where required | Bound cascades; deferred/exclusion constraints require a separate implementation |
 | Transactions | Serializable default, explicit transactions and retry/unknown-outcome errors | No weaker isolation mode until separately validated; serializable is not a strict-serializable marketing claim |
 | Schema | Tables, schemas, indexes, defaults, identities, views, online supported changes | Transactional DDL subset; long online jobs have their own lifecycle |
@@ -18,12 +18,14 @@ Publish a machine-readable feature matrix and certify specific driver versions. 
 | Session state | Prepared statements, scoped settings, transaction state | Temp tables, session advisory locks and raw LISTEN/NOTIFY are not initial requirements |
 | Bulk I/O | CSV/JSON import/export and selected COPY protocol support | No binary PG dump/physical backup compatibility |
 | Spatial | Declared Falcone geometry/geography subset | Not binary/function-compatible with all PostGIS |
-| Search | Exact vector distance pilot; ANN/full-text in expansion | Existing pgvector-dependent workspaces stay on PostgreSQL until required semantics are certified |
+| Search | Demand-driven exact vector distance pilot; ANN/full-text in expansion | No core-release vector promise; existing pgvector-dependent workspaces stay on PostgreSQL until required semantics are certified |
 | Extensions/procedural code | Feature inventory and unsupported-feature errors | No PostgreSQL extension ABI, PL/pgSQL, user triggers or arbitrary C extensions initially |
 | Replication | Falcone-native durable change stream | No initial PostgreSQL WAL/physical replication protocol compatibility |
 | Persistent storage | First-party Falcone disk/WAL/table/manifest formats with their own versioned contract | No PostgreSQL, RocksDB or LevelDB physical file compatibility; import through supported logical migration/export paths |
 
 The unsupported-feature report is a hard migration gate. A connection that succeeds but misinterprets a type, collation or SQL statement is a failure, not partial success.
+
+The [review](documentation-review.md) narrows initial certification to concrete Falcone workloads. Assess each workload's distribution key, colocation, local/global indexes, transaction participant counts, lock contention, scan/join memory and result size. Certify equivalent outcomes and stated resource limits, not PostgreSQL's physical plans. Shard policy or file-format changes never justify silent changes to SQL equality, ordering or isolation.
 
 Storage-engine ownership is a confirmed requirement. PostgreSQL migration does not copy source pages or WAL into Falcone's engine as native files. Logical source changes are decoded, validated and written through the first-party storage/transaction path. Native backups additionally bind Falcone file-format/codec/key versions; see [native storage](native-storage.md) for compatibility and conversion gates.
 

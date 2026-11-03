@@ -2,6 +2,10 @@
 
 Research date: **2 November 2026**. The target repository was empty when inspected. This is a proposal, not a code audit of a running Falcone RDBMS.
 
+**Documentation review added 3 November 2026:** [essential features and findings](documentation-review.md) examines the three uploaded books, maps their 43 main chapters to the backlog, and explains changes to the original eight documents and 115 issues. B1 = Sciore, *Database Design and Implementation*, 2nd ed. (2020); B2 = Kleppmann/Riccomini, *Designing Data-Intensive Applications*, 2nd ed. (2026); B3 = Petrov, *Database Internals* (2019). Exact uploaded-file hashes, review coverage and chapter references are recorded there. The books inform design choices; their historical product examples are not new current-product verification.
+
+The review confirms Rust/native storage and prioritizes replicated operation, conditional physical sharding, bounded execution, relational integrity and early restore evidence. It promotes consistent snapshots and management APIs into the core, specifies a fenced-drain split baseline, and defers polished UI/CLI plus advanced workloads. See [distributed contracts](distributed-contracts.md) for the resulting implementation obligations.
+
 ## Falcone baseline inspected
 
 Falcone's README describes a Node.js/pnpm/Turbo platform deployed on Kubernetes, with tenant/workspace boundaries, plan capabilities, PostgreSQL, SeaweedFS, Kafka, OpenBao, and FerretDB/DocumentDB. Selected integration files were inspected at commit `9c477e46b20ceb0a28c56d63d0f738e886580813`; this is a source snapshot, not verification of a deployed cluster.
@@ -122,5 +126,6 @@ Links were consulted on 2 November 2026. “stable/current” pages are moving r
 | S38 | [LevelDB table format](https://github.com/google/leveldb/blob/main/doc/table_format.md) |
 | S39 | [SQLite atomic commit and hardware assumptions](https://www.sqlite.org/atomiccommit.html) |
 | S40 | [PostgreSQL write-ahead logging](https://www.postgresql.org/docs/current/wal-intro.html) |
+| S41 | [Ongaro and Ousterhout, In Search of an Understandable Consensus Algorithm, extended version](https://raft.github.io/raft.pdf), §§5.4, 6–8; consulted 3 November 2026 to qualify consensus rules |
 
 The architecture, targets, roadmap and backlog in the accompanying documents are proposed Falcone designs derived from these observations, not claims that upstream systems implement the exact combination.

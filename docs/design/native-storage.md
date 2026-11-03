@@ -20,6 +20,8 @@ Propose an ordered log-structured merge layout: writes enter a first-party WAL a
 
 M0 compares a small first-party LSM prototype with a first-party B+tree prototype using the same durability, key encodings, hardware and workload. Cover point reads, range scans, random/sequential updates, deletes, snapshots, disk growth and p99 under maintenance. Choose one primary layout before expanding the engine. If evidence favors B+tree, revise the table/cache/checkpoint sections through an ADR; both engine and format remain Falcone-owned. Do not build two production backends by default.
 
+The [book review](documentation-review.md) retains this experiment: B1 chs. 3–6/12, B2 ch. 4 and B3 chs. 2–7 show why layout choice depends on workload and recovery complexity. Include secondary-index writes, retained MVCC versions, recovery time and total WAL/flush/compaction/replication traffic. Compare a clearly specified B+tree variant; do not treat all buffered or copy-on-write trees as an identical baseline.
+
 Use a bounded number of **storage domains** per process. Each domain has a WAL sequence space, manifest and file set and can host many shard prefixes. All shards share budgeted pools; do not allocate a full WAL writer/cache/memtable per tenant. Table outputs are constrained to a shard/key-range boundary, even when input memory is shared. Small shards may create small files; batching and file-count controls require explicit benchmarks rather than unsafe cross-scope mixing.
 
 Keep three identifiers separate:
@@ -32,6 +34,8 @@ Keep three identifiers separate:
 
 An engine atomic batch can contain uncommitted SQL intents. Persisting that batch does not commit the SQL transaction.
 
+Recovery restores those intents and their transaction identity. SQL recovery determines their outcome before visibility/reclamation; an absent coordinator is not an abort decision. Page-oriented undo/redo examples from the literature inform ordering requirements but do not mandate ARIES or an undo-only algorithm for this LSM.
+
 ## Storage API contract
 
 The initial API includes `ApplyBatch`, `Get`, `Scan`, `PinReadView`, `Checkpoint`, `ExportShardSnapshot`, `InstallShardSnapshot`, `Verify`, and durable consensus-log operations. These are internal typed Rust interfaces, not SQL/API endpoints. Errors distinguish invalid input, unsupported format, resource exhaustion, I/O failure and corruption.
@@ -43,6 +47,8 @@ The initial API includes `ApplyBatch`, `Get`, `Scan`, `PinReadView`, `Checkpoint
 ## Disk format v0: proposed contract
 
 Publish a standalone normative format specification and golden binary fixtures before claiming compatibility. No file depends on Rust struct layout, pointer size, host endianness or unversioned serializer defaults. Specify integer widths, length bounds, canonical key ordering, checksum coverage and decoder behavior. Header integer fields are little-endian; ordered key encodings separately use a canonical sort-preserving representation. String/collation versioning belongs in key metadata.
+
+The codec contract also covers null-versus-missing fields, signed-zero/NaN policy, decimal normalization, composite-prefix escaping and logical primary-key locators. Comparator, hash and collation versions are durable semantics: changing them requires a validated rewrite/reindex transition, not only a library upgrade. Mixed-version read-modify-write must preserve supported unknown optional fields or refuse the write. New format features activate only when all required readers/writers/replicas/restore tools support them.
 
 Proposed common file envelope (64 bytes; illustrative until M0 freezes it):
 
@@ -126,6 +132,8 @@ MVCC GC needs the oldest protected SQL snapshot and transaction/backup/CDC requi
 
 Bound compaction CPU, read/write bandwidth and output reservations; reserve free space for WAL/recovery. Throttle ingestion before disk exhaustion. Do not auto-delete live history to satisfy a quota. Metrics include write/read/space amplification, L0 backlog, pending flush bytes, oldest pin, stalls and file count. Exact crash-safe range deletion is deferred until specified; no unsafe fast-path is required for the first release.
 
+Reservations compose with query spill, backups, backfills and shard precopy at node level. Enforce the aggregate budget, not just separate per-job caps. Long pins have an explicit admission/expiry contract; a pin cannot disappear merely because the GC worker needs space. Log truncation across a shared domain advances only through a completely covered prefix, even when a later shard sequence has already flushed. Validate hot/cold shard flush combinations and interrupted maintenance against a reference history.
+
 ## Recovery, verification and upgrades
 
 Recovery validates `CURRENT`, manifest identity/checksums and every required file/version, rebuilds in-memory metadata, then replays complete batches beyond the recoverable checkpoint. Distinguish an incomplete final append under the stated crash-only storage model from a checksum failure in a fully framed record or interior log. Never skip a corrupt record and continue as though data were complete. Replicated recovery checks required consensus indexes and can fetch a verified snapshot/log from a healthy peer. Corruption that invalidates promised durable history requires quarantine/recovery, not automatic tail truncation.
@@ -137,8 +145,8 @@ Each disk-format change ships fixtures and a reader/writer compatibility matrix.
 ## Storage-specific release gates
 
 - M0: ownership-boundary check; first-party LSM/B+tree experiment; format/durability RFC; model of manifest/WAL publication and deletion; byte-level fixture plan.
-- M1: first-party WAL, table, manifest, cache and bounded compaction paths pass model/reference tests; crash injection at every write/flush/rename/directory-sync boundary preserves acknowledged batches; cold restart recovers without a third-party engine.
-- M2: integrate durable Raft hard state/logs, snapshot installation, shard splitting and prepared transactions; prove replay fences in failure tests.
+- M1: first-party WAL, table, manifest, cache and bounded compaction paths pass model/reference tests; crash injection at every write/flush/rename/directory-sync boundary preserves acknowledged batches; cold restart and clean-directory restore recover without a third-party engine.
+- M2: integrate durable Raft hard state/logs, snapshot installation, fenced shard splitting and prepared transactions; prove replay fences and a transaction-consistent clean-cluster restore in failure tests.
 - M3: snapshot/backup/CDC/object retention all constrain file/history GC; restore into a fresh process/cluster validates bytes and relational invariants.
 - M4: malformed-file fuzzing, bit-flip/truncation/reordered-write campaigns, real filesystem/device recovery, seven-day mixed-load compaction/space stress, format upgrade/restore drills, and independent persistence-protocol review.
 

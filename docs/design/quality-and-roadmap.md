@@ -2,20 +2,36 @@
 
 All numeric values here are **proposed engineering targets**, not measured results or capacity promises. M0 must establish hardware, workload and budget before accepting or revising them.
 
+Revision: 3 November 2026, following the [documentation review](documentation-review.md). The minimum distributed core is defined by [scenario evidence](distributed-contracts.md#mandatory-scenario-evidence), not by the number of checked feature boxes.
+
 ## Scope tiers
 
 | Tier | Required scope |
 | --- | --- |
 | M0 feasibility | Confirmed native-storage ownership; first-party LSM/B+tree prototype comparison; disk-format and durability RFC; qualified primitive libraries; Falcone compatibility inventory; transaction/shard/persistence models; reproducible harness |
-| M1 local alpha | First-party WAL/table/manifest/cache/compaction implementation with crash recovery; integrated local MVCC; bounded SQL subset; single-node serializable behavior; authenticated tenant isolation; JSON management; driver smoke certification |
-| M2 distributed alpha | Three-domain replicated shards; cross-shard transactions/constraints; failover; safe splitting/movement; load admission and connection scale |
+| M1 local alpha | First-party WAL/table/manifest/cache/compaction implementation with crash and clean-directory restore; integrated local MVCC; bounded SQL subset and execution; single-node serializable behavior; authenticated tenant isolation; JSON management; driver smoke certification |
+| M2 distributed alpha | Three-domain replicated shards; cross-shard transactions/constraints; failover; fenced split/move and small-to-large growth; distributed plans; consistent snapshot and clean-cluster restore; internal change envelopes; load admission and connection scale |
 | M3 constrained beta | Named spatial subset; managed S3 objects; coordinated backups/PITR; committed CDC; Falcone integration; supported-workspace migration rehearsal |
 | M4 production candidate | Independent correctness/security review; fault campaign; sustained workload/failover tests; verified restore/upgrade; published compatibility/SLO limits |
-| M5 expansion | Multi-region/locality; object-backed analytical tier; search/ANN; advanced SQL/GIS and development branches |
+| M5 expansion | Multi-region/locality; object-backed analytical tier; search/ANN; advanced SQL/GIS, development branches and polished administration UI/CLI |
 
 Do not move a user baseline requirement into an indefinite future: native sharding and high client concurrency are M2, SQL-free administration starts at M1, and geospatial plus S3 large objects are mandatory for M3. Full compatibility with top-tier engines is not a realistic first-release criterion; the supported relational subset must still satisfy integrity and recovery guarantees.
 
 Native storage and format ownership is also a baseline requirement, delivered from M1 onward. The [storage-specific gates](native-storage.md) and E19–E23 cover implementation work formerly delegated to an embedded engine. E02 verifies integration of those components with row/index/MVCC semantics; it is not a second storage implementation.
+
+P0 covers the core protocol, execution, security, API, recovery and evidence requirements. P1 covers required product capabilities for M3. P2 covers expansion. E09-S01–S03 are P0 API/schema foundations; E09-S04 is P2 presentation work. E12 now spans M1–M3: S3 objects are a dependency only for object-inclusive backup, not for local/row-only restore. E13's commit/schema/topology envelope is designed and exercised internally by M2; external delivery remains M3. Public follower reads remain deferred, but consistent internal cuts are mandatory.
+
+## Critical path and gate ownership
+
+| Gate | Work that must already be real | Failure prevents |
+| --- | --- | --- |
+| M0 protocol/layout decision | E01-S02/S03 plus E17 harness; recovery, lock/commit, snapshot frontier and ownership transition models; pinned workload and primitive decisions | Freezing file format, choosing concurrency optimizations or promising capacity |
+| M1 durable vertical slice | E19–E23 local slices, E02, E04-S01, E05 core, E07/E08/E09 API slices, E12 local restore | Claiming a durable local relational engine |
+| M2 distributed vertical slice | E03/E20, E04 distributed/snapshot slices, E06, E05 distributed execution, E07 admission, E12 distributed restore, E13 envelope and E16 operations | Calling the database scalable/distributed/sharded based only on multiple processes |
+| M3 product completeness | Geo, S3 reference lifecycle and object-complete backup, CDC delivery, Falcone integration and supported migration rehearsal | Claiming the original Falcone baseline is complete |
+| M4 production evidence | Independent reviews, mixed-version/recovery/fault/soak campaigns, certified workload and limits | Supporting production durability/SLO promises |
+
+Dependency edges refer to these slices. E09's local API does not wait for E03's distributed catalog; E12's local restore does not wait for E11. No milestone assumes implementation completeness merely from an earlier design document.
 
 ## Benchmark plan
 
@@ -39,6 +55,19 @@ Run: read-heavy and balanced point workloads; insert-heavy sequential/random key
 
 Add storage-only baselines before SQL benchmarks: equivalent durable batches and ordered lookups against a simple reference model and separate benchmark installations of established engines. Record flush/fsync latency, WAL bytes per logical byte, compaction write amplification, live/retained/temp space, cache hit rate, file count and recovery throughput. Compare the first-party LSM/B+tree prototypes on equal correctness/settings; a competitor engine must not become a hidden fallback in release binaries.
 
+### Measurement protocol added by the book review
+
+1. Publish a workload manifest: row/index sizes, key/tenant skew, read/write ratio, transaction participants, result sizes, dataset/cache ratio, connection churn, history retention and background jobs. Keep RF, fsync, TLS and per-node resources fixed for comparisons.
+2. Sweep offered arrival rate independently from completion rate. Include client queueing, timeout/error counts and retry traffic; a stalled closed-loop generator must not hide waiting requests. Record both open-loop saturation and realistic bounded-client runs.
+3. Measure end-to-end response distributions with enough observations and duration to support each reported percentile. Merge histograms across workers; do not average p99 values. Report repeated-run variation, not just the best run.
+4. Separate gateway scaling, query-compute scaling, storage capacity/throughput scaling and metadata/timestamp scaling. Run fixed total data and constant data-per-node variants to expose cache effects. Record logical/physical bytes and replication overhead.
+5. Measure stable pre-growth, active rebalancing and stable post-growth periods separately. Include affected-range admission pause, backlog, temporary disk use and repair bandwidth. A 1.6x target is evaluated for its named independent-key workload, not for one hot row or arbitrary cross-shard joins.
+6. Increase idle and active shard counts independently. Measure heartbeat traffic, per-group memory, file count, descriptor/watch load, restart/election behavior and leader distribution. Set a supported range-count envelope from results.
+7. Combine compaction, backup, DDL backfill and movement with foreground queries. Verify reservations protect consensus and outcome recovery. Test sustained overload and return to normal load without requiring a cluster restart.
+8. Record client-visible availability under node/zone loss, coordinator failure and metadata outage separately. Distinguish safety (no invalid outcome) from liveness (progress under stated quorum/resource assumptions).
+
+The books motivate these dimensions (B1 chs. 4/14/15; B2 chs. 2/7/9; B3 chs. 5/7/8). The specific thresholds are Falcone hypotheses. Before a public scale claim, E17-S03 must link every claim to a reproducible run and state the largest tested topology and workload.
+
 ## Correctness and reliability gates
 
 - Deterministic simulation from the first storage/transaction milestone: controlled clocks, network, disks and scheduler; save failing seeds. Model-check transaction decisions, topology transitions and GC/pin races separately.
@@ -51,10 +80,15 @@ Add storage-only baselines before SQL benchmarks: equivalent durable batches and
 - At least a 7-day mixed-workload soak and repeated restart/upgrade campaigns for M4; longer campaigns as volume and risk justify. No unresolved critical correctness/security issue passes a release gate.
 - Native-format golden fixtures and fuzzing cover every file kind, feature bit, length/offset and checksum; an independent reference decoder/model checks canonical encodings. Power-loss simulation includes dirty OS buffers, short writes, failed syncs and rename/directory durability. `kill -9` alone is not power-loss coverage.
 - Verify manifest publication/reclamation, partial flush watermarks, WAL segment gaps, torn tails, corrupt committed data, compaction tombstone resurrection, cache identity reuse and double-log replay fences. Unsupported versions/corruption fail explicitly; no fallback to an older root may silently lose acknowledged writes.
+- Check mixed-version read-modify-write preservation of unknown optional fields, comparator/collation activation, delayed pre-restore messages, request-dedup expiry, and split cancellation versus activation. Feature negotiation must include restore/inspection tools as well as online servers.
+- Test external sort and hash join/aggregation beyond memory, concurrent memory grants, all-equal join keys, empty/null inputs, early cancellation and spill disk exhaustion. A query that stays within its admitted budget must not be killed by another query's unaccounted allocation.
+- Compare replicas at a common logical/applied cut; quarantine divergence and repair from validated history. Do not resolve corruption by last-write-wins or a majority of arbitrary current values.
 
 ## Operations and observability
 
 Metrics: active/idle sessions, queue time, admission drops, transaction latency/aborts/recovery age, shard hotspots, replication lag, fsync and compaction, snapshot/CDC age, blob lifecycle/GC backlog, backup archive lag, verification and restore durations. Avoid an unbounded Prometheus label per tenant/query; aggregate and expose scoped detail through authenticated APIs/logs.
+
+Add lock bytes/waits, oldest prepared transaction, safe-frontier lag/blockers, dedup retention/expiry, metadata/timestamp queueing, directory-watch backlog, range-count overhead, split state/pause, reserved versus used memory/temp space, operator spill/exchange bytes and retry amplification. Readiness must distinguish a process running from its authority and ability to serve the requested operation.
 
 Use OpenTelemetry traces across gateway/query/shard/object operations with parameter values redacted. Query fingerprints, sampled explain plans, slow-query budgets and index statistics support diagnosis. Separate service availability, data durability, backup freshness and capability health in readiness dashboards.
 

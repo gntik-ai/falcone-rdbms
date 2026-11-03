@@ -15,6 +15,8 @@ SQL remains available for application queries and compatible schema operations; 
 | Columns/indexes/constraints | Typed changes within schema plans | Online state machine with progress and supported rollback boundary |
 | Roles/policies/grants | `PUT /v1/.../policies/{id}` | Authorization and optimistic concurrency; audited changes |
 | Shards/placement | `POST /v1/.../placement-plans` | Preview capacity/locality impact; schedule bounded transfers |
+| Placement operations | `GET /v1/.../placement-operations/{id}` | Report split/move state, generation, affected-range pause, blockers, budgets and cancellation boundary |
+| Transaction outcomes | `GET /v1/.../transaction-outcomes/{id}` | Scope-authorized resolution of known/unknown outcomes with retention/retry limits; never a cross-tenant oracle |
 | Operations | `GET /v1/operations/{id}` | Queued/running/succeeded/failed/cancel-requested/cancelled with progress |
 | Sessions/queries | `GET /v1/.../sessions`, `POST /v1/.../queries/{id}:cancel` | Scoped inspection; best-effort cancellation with durable transaction outcome |
 | Backups/restores | `POST /v1/.../backups`, `POST /v1/.../restores` | Asynchronous, resumable, validated jobs |
@@ -26,6 +28,8 @@ SQL remains available for application queries and compatible schema operations; 
 | Capabilities | `GET /v1/capabilities` | Actual supported types/features/limits/version, not marketing defaults |
 
 Administrative mutations use an idempotency key bound to principal, scope and request hash. Reusing a key with different content fails. An `If-Match`/expected resource version prevents lost updates. Preview plans bind the catalog version, principal, capability/policy version and content hash; apply reauthorizes and rejects stale plans.
+
+The idempotency record and effect share durable transactional authority. Publish the retention window, maximum safe retry horizon and expired-key behavior; do not execute an uncertain old request solely because its outcome was reclaimed. Resource limits and deadlines follow requests across internal retries. Use decimal strings for exact int64/decimal values in JSON where numeric transport cannot preserve them; distinguish omitted, null and default values. Mixed-version clients must preserve supported unknown optional data on rewrite or receive an explicit incompatibility error.
 
 Native storage reports its owned format major/minor/features and compatible reader/writer versions. Operator file-verification controls are distinct from tenant query permissions. The storage API never allows a caller to bypass WAL durability, overwrite a live file, remove a pin or force-drop protected history. Format conversion is a separately preflighted upgrade job; physical byte inspection/salvage follows the offline tools contract in [native storage](native-storage.md).
 
@@ -68,6 +72,10 @@ For large changes use explicit states: `VALIDATING → WRITE_ONLY → BACKFILLIN
 An index backfill starts at a protected MVCC timestamp while concurrent writes maintain the new index under a schema lease/version. Validate uniqueness before publication. Query workers plan against compatible catalog versions; publication is atomic. Dropping a column/index hides it before reclaiming physical state. Rollback after publication is a new forward operation unless a safe inverse is defined.
 
 Small supported DDL can be transactional. Long-running online jobs are not falsely presented as one ordinary user transaction. Declare which DDL forms are allowed inside `BEGIN/COMMIT`; reject unsupported combinations.
+
+Backfill uses the required consistent-cut/retention protocol from [distributed contracts](distributed-contracts.md#consistent-cuts-for-backup-backfill-and-streams). Versioned descriptor leases bound old-plan lifetimes; publication waits for required write behavior, and reclamation waits for old readers. Test DDL concurrently with shard cutover, backfill cancellation and writer upgrades. Runtime capability discovery reflects this exact supported intersection.
+
+JSON/gRPC administration and minimal recovery/diagnostic tooling are core. E09-S04's polished Falcone console and general-purpose CLI are P2 presentation work; postponing them does not postpone the APIs or operational runbooks.
 
 ## Geospatial subset
 

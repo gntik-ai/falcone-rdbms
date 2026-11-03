@@ -2,6 +2,8 @@
 
 Status: proposal; all guarantees below are implementation requirements and release gates, not current behavior. See [research](research.md) for source evidence and [roadmap](quality-and-roadmap.md) for qualification.
 
+The 3 November [documentation review](documentation-review.md) prioritizes the essential features and maps all three uploaded books to this design. The [distributed contracts](distributed-contracts.md) refine the growth profiles, authority, split state machine, snapshots, retry retention and bounded query execution described here. Those refinements supersede the earlier informal split outline.
+
 ## Product boundary
 
 Falcone RDBMS owns SQL evaluation, schema/catalog management, authorization, transactions, distributed indexes, native shard placement, replication, recovery and operational APIs. **Storage-engine and disk-format ownership is a confirmed user requirement.** Falcone implements its own persistence code in Rust: WAL, table files, manifest/checkpoints, cache, compaction, integrity verification and recovery. Third-party database/storage engines are excluded as shipping backends. Qualified general-purpose libraries and a consensus algorithm core remain eligible; Falcone owns their storage integration.
@@ -40,6 +42,8 @@ flowchart TD
 
 Roles can share one binary in local development. Separation into independent deployments is a scaling option, not a requirement for six microservices per small workspace. Never deploy one process, Raft group or database instance per client or automatically per tenant.
 
+Support a non-HA single-node development profile, a small three-domain production profile with one/few replicated data ranges, and a scale-out profile with many ranges. Compatible small tables/tenants can share ranges; logical distribution policy does not imply dedicated physical resources. Sharding is native from the start and used as capacity/load requires it. Prove the transition between production profiles using the same client endpoint and logical schema.
+
 The cluster bootstraps from authenticated node membership and its own replicated metadata storage. It must not depend on a tenant database it is supposed to provision. Falcone IAM/Secrets integration has cached verification and explicit failure behavior; no request-loop dependency on this new engine is introduced into its own startup.
 
 ## Key and catalog model
@@ -72,7 +76,7 @@ Use MVCC versions for consistent historical reads, backups and recovery. Track a
 
 **Serializable is the proposed default.** Consensus, MVCC and two-phase commit alone do not prove serializability. The initial correctness-first protocol is strict two-phase locking of read/write keys and predicates, layered over MVCC, with replicated transaction status and two-phase commit for multiple shards. Read-committed/snapshot modes are deferred until separately specified and tested.
 
-Transactions are identified by a stable ID and attempt/ownership epoch. A hashed transaction-status key distributes decision records across system shards. The status record includes participants, deadline, state, coordinator fencing epoch, and the immutable final decision. An HA timestamp allocator in the metadata service allocates monotone epochs/timestamps for MVCC; batching and failover must preserve the protocol's ordering. It is a benchmarked potential bottleneck, not an assumed infinitely scalable service.
+Transactions are identified by a stable ID and attempt/ownership epoch. A hashed transaction-status key distributes decision records across system shards. The status record includes participants, deadline, state, coordinator fencing epoch, and the immutable final decision. Freeze participant membership before committing; late participants force a valid protocol transition or abort. An HA timestamp allocator initially colocated with metadata allocates monotone epochs/timestamps for MVCC; batching and failover must preserve dependencies and account for unused reservations. Catalog, placement, allocation and resolution use separate budgeted queues. Allocation is a benchmarked potential bottleneck, not an assumed infinitely scalable service or a global snapshot proof.
 
 The initial read/write transaction algorithm locks the accessed keys and index ranges, reads the latest committed version under those locks, and holds locks through final decision. Predicate protection includes absent keys, secondary-index gaps, full scans, and constraint checks. Fall back to a coarse table/index lock when a precise range cannot be derived. Retrying a transaction must not reuse stale reads. Do not mix arbitrary snapshot reads into this algorithm and assume serializability remains intact.
 
@@ -86,15 +90,17 @@ For multiple shards:
 4. Apply the decision to participants idempotently. Reads encountering unresolved intents consult the authoritative decision or wait; they never expose a partially committed multi-shard transaction.
 5. Acknowledge success after the durable decision and required participant prepare durability establish recoverability. Asynchronous cleanup must not alter the outcome.
 
-If a response is lost, return/resolve an **unknown outcome** using the transaction/request ID. Do not report failure as proof that a transaction did not commit. Never retry arbitrary user transactions silently: nondeterministic values and external side effects matter. Allow bounded transparent retries only for explicitly safe operations before returning visible results.
+If a response is lost, return/resolve an **unknown outcome** using the transaction/request ID. Persist eligible idempotency keys, scope, operation/payload hash and outcome under the same decision authority as their effects. Define a retention/retry horizon; an expired or unknown ID does not prove noncommit. Do not report failure as proof that a transaction did not commit. Never retry arbitrary user transactions silently: nondeterministic values and external side effects matter. Allow bounded transparent retries only for explicitly safe operations before returning visible results, with an end-to-end deadline and retry budget.
 
 Leader failover reconstructs prepared locks before serving conflicting work; unprepared attempts must be safely fenced/aborted or recovered. Resolve deadlocks by a documented global order/victim rule and return a retryable error. Coordinator lease expiry initiates recovery; it is not permission to discard prepared locks. If the decision quorum is unavailable, affected transactions may block. This is an explicit availability tradeoff.
 
-Read-only optimized snapshots are a separate protocol: publish a stable timestamp below every unresolved transaction that could commit at or below it, account for lagging participants, and check intents. Initially ordinary serializable reads use the locking path. Follower reads require a documented safe timestamp and freshness contract; route fresh reads through the leader/ReadIndex path. HLC timestamps alone do not establish serializability or external consistency. No strict-serializable/external-consistency claim is made until independently checked.
+Consistent internal snapshots are a **required M2 primitive** for backup, backfill and snapshot-to-stream handoff: publish a stable frontier that accounts for every transaction that could still commit at/below it, lagging participants, timestamp reservations, topology and schema. Specify and model that protocol, or use an explicitly quiesced consistent checkpoint with declared availability impact. A local engine read view is insufficient. Initially ordinary serializable SQL reads use the locking path. Public snapshot/follower modes remain separately gated; route fresh reads through verified leader authority and an applied-state barrier. HLC timestamps alone do not establish serializability or external consistency. No strict-serializable/external-consistency claim is made until independently checked.
 
 ## Native sharding and placement
 
 Every logical table has a distribution policy from creation. Start with auto-selected defaults but show them in introspection and plan previews.
+
+Default hash placement maps canonical distribution bytes through a stable versioned hash into movable token ranges. The replicated directory maps ranges to replica sets; never use modulo the current node count. Colocation has explicit indivisible-unit limits and cannot silently prevent a large tenant from subdividing. Ordered-range policies and pre-splitting are available for suitable workloads.
 
 | Strategy | Appropriate workload | Cost |
 | --- | --- | --- |
@@ -106,17 +112,21 @@ Every logical table has a distribution policy from creation. Start with auto-sel
 
 Do not make `hash(tenant_id)` the only partitioning rule: one tenant can exceed a node. Distinguish tenant placement from row sharding. A single very hot row is still serialized; splitting a shard cannot remove that contention.
 
-Split/move workflow: select a boundary → establish a snapshot and ordered delta stream → catch up a new replica/range → validate completeness → commit a fenced descriptor transition → drain old routing → retire obsolete copies after protected-reader/checkpoint requirements. A split must transfer outstanding intents and predicate-lock coverage; routers may retry stale-epoch requests but must not duplicate applied writes. The detailed split state machine is an M0/M2 proof obligation.
+The initial split workflow is `PLANNED → COPYING → DRAINING → SEALED → PUBLISHED → RETIRING → COMPLETE`, defined in [distributed contracts](distributed-contracts.md#initial-split-and-movement-state-machine). Precopy retains ordered deltas; a replicated source fence drains affected transactions before child activation. A measured admission pause is allowed on the affected range. Prepared transactions must resolve or block cutover; timeouts never discard them. Live lock/predicate transfer is deferred until separately proven. Replica replacement within one group uses consensus membership; distribution-key changes use an explicit migration. Stale routing cannot duplicate applied effects or reactivate the old writer.
 
 Schedule by bytes, CPU, read/write load, compaction pressure, replica health, tenant budgets and locality. Use hysteresis and transfer budgets to avoid constant movement. Support safe manual pinning/drain in addition to automation. Initial system supports splitting and replica movement; merging ranges is a later optimization.
 
 Unique constraints and foreign keys must remain correct across shards. Local unique indexes suffice only when the distribution key makes uniqueness local. Otherwise use a transactional global index keyed by `(scope, index_id, normalized_value)` and include it as a participant. FK existence/deletion checks lock referenced keys; cascades need bounded size and all-or-nothing behavior. Unsupported distributed constraints are rejected at DDL time, never silently weakened. Initial beta may restrict very large cascades and deferred constraints, but ordinary cross-shard uniqueness/FKs are required for certified workloads.
+
+Nonunique local/global indexes have distinct read and write costs. Global indexes are independently sharded, updated transactionally when certified, and use stable logical row locators. Explain shows row-fetch fan-out and additional transaction participants. Asynchronous derived indexes cannot enforce synchronous SQL constraints.
 
 ## Query execution and relational features
 
 Pipeline: parse SQL or typed JSON query → authenticate/bind names → inject immutable scope and RLS rules → type check → optimize → construct distributed plan → execute with budgets → stream results. JSON management is a separate typed catalog path; it is not string concatenation disguised as an API.
 
 Implement a low-overhead row/point-operation path for OLTP. Use batches for scans/joins/aggregates where worthwhile. Costing includes shard count, network bytes, row estimates, join distribution and memory/spill pressure. Prefer shard pruning, colocated joins, predicate/aggregate pushdown, top-k pushdown and keyset pagination. Unprunable queries have explicit fan-out, byte and time budgets. Spill is tenant-scoped, encrypted and cleaned after failure.
+
+Collect versioned cardinality/width/null/distinct statistics and sampled skew, with stale-statistics fallback. Budget optimizer search itself. Physical operators obtain real memory/temp-space grants before execution; external sort has bounded merge fan-in, and skewed hash joins have terminating fallbacks. Bounded exchanges propagate cancellation and slow-reader backpressure. Rewrites preserve NULL/collation/volatility/security-barrier semantics. See the [execution contracts](distributed-contracts.md#query-execution-required-for-useful-scale), based on B1 chs. 7–15 and B2 chs. 7/11.
 
 Core SQL includes exact numeric values, NULL/three-valued logic, Unicode/collation policy, timestamps, JSON, PK/FK/UNIQUE/CHECK/NOT NULL, defaults, generated identities, CRUD/upsert, joins, aggregation, ordering, prepared statements, transactions and explain plans. See the [compatibility matrix](compatibility-and-migration.md) for staged scope. A parser or PostgreSQL wire library is not a complete SQL engine.
 
@@ -129,6 +139,8 @@ Track four quantities separately: open sockets, authenticated sessions, in-fligh
 Keep prepared-statement/session metadata at the gateway with bounded caches. Transactions pin their coordinator/session until completion in the first implementation. Unsupported session features fail explicitly; do not silently multiplex session-level locks, temporary tables or LISTEN semantics across unrelated sessions. Gateway failure can drop sessions, but durable transaction outcome is recoverable. Client reconnection with jitter and request deduplication are part of the contract.
 
 Admission operates per tenant/workspace and globally: connection limits, authentication-rate caps, active-transaction limits, query CPU/memory/scan budgets, queue deadlines, fair scheduling, slow-reader cancellation and result-size limits. Reserve resources for consensus, recovery and control traffic so user overload cannot prevent failover. Distinguish retryable overload from authorization denial.
+
+Admission also accounts for locks, pins, shared caches, RPC queues and background work. Flush, compaction, backup, backfill, integrity scans and shard movement use coordinated reservations; do not let multiple independently bounded jobs collectively exhaust a node. Verify recovery after overload subsides and report resource/metadata/shard-count limits alongside client capacity.
 
 ## Isolation and security
 

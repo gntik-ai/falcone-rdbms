@@ -2,7 +2,7 @@
 
 All numeric values here are **proposed engineering targets**, not measured results or capacity promises. M0 must establish hardware, workload and budget before accepting or revising them.
 
-Revision: 3 November 2026, following the [documentation review](documentation-review.md). The minimum distributed core is defined by [scenario evidence](distributed-contracts.md#mandatory-scenario-evidence), not by the number of checked feature boxes.
+Revision: 4 November 2026, following the [earlier review](documentation-review.md) and [Database System Concepts review](database-system-concepts-review.md). The minimum distributed core is defined by [scenario evidence](distributed-contracts.md#mandatory-scenario-evidence), not by the number of checked feature boxes.
 
 ## Scope tiers
 
@@ -118,3 +118,25 @@ Open decisions with recommended defaults:
 | Workspaces requiring extensions | Keep PostgreSQL until individually certified | Migration gate |
 
 These are proposal choices, not a request to delay design work pending approval. Implementation should resolve them with the evidence specified by E01.
+
+
+## Fourth-book delivery map
+
+The backlog now has 27 epics/108 stories. E24–E26 refine the implementation under existing integration gates; E27 and E25-S04 are optional M5 capabilities. Dependencies are interface/milestone slices, not circular requirements to finish all of E05 before any E24/E25 work.
+
+| Gate | Required additions | Evidence |
+| --- | --- | --- |
+| M0 | Freeze catalog/identity/constraint/JSON profiles; model sequence fencing, lock hierarchy and durable job progress | Protocol assumptions, feature matrix and counterexamples; E01/E24/E26 design slices |
+| M1 | E24 local descriptors/views/identity/constraint behavior; E25-S01/S03 local statistics and plan validity; E26-S01 initial streaming subset | Restart, failed-statement, NULL/bag/JSON and revoked-plan tests within local limits |
+| M2 | E24 distributed authority/dependencies; E25 distributed collection/physical plans/cache validity; E26-S03 online native index build foundations | Leader loss, unequal shards/splits, outer-join ownership, covering lock conflicts, private/public index recovery |
+| M3 | E26 operational import/export and full certified codec/build integration; original geo/S3/CDC/Falcone requirements | Crash-resume batch evidence, verified export/reimport, object completeness, migration and source-sequence reconciliation |
+| M4 | Production qualification includes all required new slices | No unresolved critical semantic/security/recovery defects; bounded plan/cache/job resource use under faults |
+| M5 | E25-S04 runtime filters and E27 materialized generations/qualified incremental subset | Exact-query/full-refresh comparison, false-negative tests, freshness/policy enforcement and total workload cost |
+
+Add targeted semantic datasets that distinguish a correct plan from common wrong rewrites: duplicate-valued EXISTS, NULL-aware NOT IN, empty/global aggregates, outer rows matching only on another worker, scalar subqueries with multiple rows, and UPDATEs that change their own scanned key. Validate post-transaction database state, not only returned rows. Every comparison uses the declared common semantics rather than assuming all PostgreSQL syntax is supported.
+
+Measure **speedup** of a fixed query/work amount separately from **scale-up** with proportionally larger datasets/transaction rates and resources. Report absolute throughput/latency as well as ratios. Keep durability/RF/TLS/cache assumptions visible; report startup, scheduling, skew and total CPU/network/memory, including broadcast amplification. Faster one-query elapsed time can consume more total resources and harm concurrent OLTP. No new numeric SLO follows from B4.
+
+Add plan compilation/cache bytes and invalidation reasons, statistics age/coverage/sample size, parallel grants, sequence reservation/waste, bulk job committed-batch progress and (M5) materialized generation/frontier/lag. Metrics and logs must have bounded cardinality and protect sampled values/parameters. Test overload recovery with analyze/import/index/export jobs active; derived work never consumes reserved consensus/outcome-recovery capacity.
+
+Implementation evidence must link each new story to an exact binary/harness version, workload and fault schedule. Static document validation in this PR does not demonstrate runtime behavior.

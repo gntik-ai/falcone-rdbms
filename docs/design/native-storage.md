@@ -151,3 +151,14 @@ Each disk-format change ships fixtures and a reader/writer compatibility matrix.
 - M4: malformed-file fuzzing, bit-flip/truncation/reordered-write campaigns, real filesystem/device recovery, seven-day mixed-load compaction/space stress, format upgrade/restore drills, and independent persistence-protocol review.
 
 Source references are in [research](research.md), S28 and S36–S40. These references explain established persistence mechanisms; the layout and contracts in this document are Falcone design proposals. No performance or durability guarantee is established until implementation evidence satisfies the gates. Implementation tasks are E19–E23, with E02 covering their integration into relational MVCC storage.
+
+
+## Fourth-book integration additions — 4 November 2026
+
+B4 does not change first-party engine/file ownership or the M0 LSM-versus-B+tree evaluation. Its page/ARIES and alternative index examples are references, not instructions to add a second persistence backend. E19–E23 remain the storage implementation owners.
+
+The [relational contracts](relational-operations.md) add native durable record families for catalog dependencies, sequence reservations/generations, job progress and (later) materialized-generation manifests. Each needs version/bounds/checksum/replay fixtures under the existing format policy; do not serialize host/Rust structure layouts. Resolved identity/default values and typed mutations replay deterministically across supported versions.
+
+E26-S03's private sorted index runs use owned codecs and comparator versions. Installing files must use a qualified manifest/WAL/consensus protocol, with checksum/uniqueness verification and recovery evidence before publication. This does not allow foreign SST ingestion or disabled logging. Bulk construction, ordinary DML and replicated recovery must agree on one visible index generation.
+
+Import/export jobs and later materialized views join shared retention accounting. Old source cuts, staging files and view generations are reclaimed only after all readers/transactions/backups/CDC/object obligations release them. A canceled worker is not by itself evidence that bytes are unreachable. Exported logical chunks do not replace a physical native backup or its format/codec/key dependencies.

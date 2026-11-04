@@ -1,5 +1,7 @@
 # Documentation review and essential feature selection
 
+Historical B1–B3 review. The [4 November fourth-book addendum](database-system-concepts-review.md) extends this analysis with B4, 26 additional chapter mappings and four epics. Current totals are 27 epics/108 stories; counts and issue ranges below describe the 3 November baseline.
+
 Review date: **3 November 2026**. Baseline reviewed: proposal commit `ebb625f4b20d54a9b91f1066d67c08196d3af397`, all eight design/backlog documents, and GitHub issues #2–#116. At review time all 115 issues were open, with no comments. This is a design review, not validation of an implemented engine.
 
 ## Recommendation

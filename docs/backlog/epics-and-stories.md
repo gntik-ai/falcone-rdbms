@@ -1,6 +1,6 @@
 # Epics and user stories
 
-Status: proposed backlog. **23 epics, 92 stories.** Storage-engine and disk-format ownership is confirmed; the implementation designs remain proposals. IDs are stable planning identifiers, not GitHub issue numbers. Nothing here is implemented or marked complete. Milestones are defined in [quality and roadmap](../design/quality-and-roadmap.md).
+Status: proposed backlog. **27 epics, 108 stories.** Storage-engine and disk-format ownership is confirmed; the implementation designs remain proposals. IDs are stable planning identifiers, not GitHub issue numbers. Nothing here is implemented or marked complete. Milestones are defined in [quality and roadmap](../design/quality-and-roadmap.md).
 
 P0 = correctness/foundation release blocker; P1 = required product capability; P2 = expansion. Dependencies refer to completion of the relevant slice, not a ban on early interface design. Every story requires observable acceptance evidence and documentation of limits. Security, recovery and compatibility checks apply where relevant, rather than being postponed to a final test phase.
 
@@ -12,6 +12,13 @@ The [3 November documentation review](../design/documentation-review.md) ranks t
 Core order: native durability/recovery → local transactional SQL → replication/distributed integrity → elastic sharding and bounded execution → required geo/S3/CDC/Falcone integration → production evidence. Security, JSON administration, admission and verification advance with each slice. P1 product capabilities remain required for M3. E09-S04 polished UI/CLI is P2/M5; essential operator APIs/tools are delivered earlier. E12 local restore no longer depends on S3. E13-S01/S02 internal envelopes/lineage are P0/M2 foundations; public delivery is M3.
 
 Each story states its own reviewed priority and gate; these override an epic's broad scheduling range. Review checks supplement its acceptance paragraph. Book references use B1/B2/B3 from the review; these are design sources, not implementation evidence. GitHub parent/checklist links remain the navigational hierarchy.
+
+
+## Fourth-book revision — 4 November 2026
+
+The [Database System Concepts review](../design/database-system-concepts-review.md) adds 26 chapter mappings, 14 findings and four epics (E24–E27), with 16 new stories. The [relational and data-operation contracts](../design/relational-operations.md) specify the new behavior. E24–E26 decompose capabilities already mentioned in E05/E09/E15 into owned implementation work; existing umbrella stories remain integration gates and must not duplicate that implementation. E27 adds optional managed materialized views. B4 denotes Silberschatz/Korth/Sudarshan, seventh edition (2020).
+
+All previous story IDs and acceptance criteria are retained. Fourth-book checks below supplement the earlier review. P0 E24/E25/E26 slices participate in M1–M3; E26-S02 is P1/M3; E25-S04 and all E27 work are P2/M5. No baseline geo/S3/sharding requirement is deferred by these additions.
 
 ## Epic index
 
@@ -40,6 +47,10 @@ Each story states its own reviewed priority and gate; these override an epic's b
 | E21 | Native sorted tables, reads and cache | P0 | M1 | E19 |
 | E22 | Flush, compaction and history reclamation | P0 | M1–M3 | E20, E21 |
 | E23 | Recovery, format evolution and storage tools | P0 | M1–M4 | Relevant E19–E22 slices |
+| E24 | Relational catalog, views and identity contracts | P0 | M1–M2 | E02/E04/E05 core interfaces, E08 policy and E09 catalog commands; E03/E06 for distributed slices |
+| E25 | Statistics lifecycle and distributed plan control | P0; S04 P2 | M1–M2; S04 M5 | E05 operators/planner and E07 budgets; E03/E06 descriptors for distributed planning; E08/E09 policy/catalog |
+| E26 | Resumable bulk data and index operations | P0; S02 P1 | M1–M3 | E04/E05 transactional writes and codecs, E07/E08 admission/security, E09 jobs, E12 consistent cuts; E11 only for managed-object transport, E19–E22 native files |
+| E27 | Managed materialized views | P2 | M5 | M4 core evidence; E24 dependencies/security, E25 planning, E09/E12 consistent jobs/cuts, E13 retained changes and E26 rebuilds |
 
 E19–E23 are storage implementation work, not later expansion. E02 is the integration/acceptance epic consuming those components; it does not duplicate their algorithms. M1 slices precede distributed work; M2/M3/M4 hardening extends them as replication, backup and format upgrades become available.
 
@@ -70,6 +81,10 @@ Review checks:
 
 - Model split cancellation versus activation, frozen transaction participants, delayed messages and snapshot-frontier advancement.
 - State crash/partition/disk assumptions, distinguish safety from liveness, and record which obligations remain unproven before implementation.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Model sequence range reservation/reset fencing, coarse/fine lock compatibility, import progress atomicity and materialized-generation publication before enabling those capabilities.
 
 **E01-S03 — Native storage and primitive qualification.** As a maintainer, I want a measured first-party storage design and qualified primitive libraries so Falcone owns persistence without hiding an external engine.
 
@@ -160,6 +175,10 @@ Review checks:
 - Qualify the selected core and durable adapter against elections, old-term entries, stale-leader reads and applied-state barriers.
 - Run small-production and scale-out topologies; one lost voter under foreground load preserves acknowledged outcomes and reports affected-shard unavailability.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Qualify deterministic state-machine commands across replay and mixed versions: record resolved identities/defaults/times and typed mutations; replica-local clock, RNG, hash iteration or floating-point behavior must not change logical effects. B4 §23.8.4.
+
 **E03-S02 — Snapshot and membership recovery.** As an operator, I want to replace failed storage members safely.
 
 **Reviewed priority / gate:** P0 / M2.
@@ -210,6 +229,10 @@ Review checks:
 - Benchmark lock contention, upgrades, long scans and absent-key predicates; document deadlock victim/prevention rules and lock count/byte limits.
 - A resource limit may abort active work through authority but cannot erase a prepared promise; retries discard earlier reads and remain bounded.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Define a shard-scoped intention/key/range lock hierarchy with compatible coarse scans. Acquire covering protection before releasing fine locks; bound escalation, detect upgrade deadlocks and preserve prepared promises. No per-row central catalog/root lock RPC. B4 §18.3.
+
 **E04-S02 — Cross-shard atomic commit.** As a developer, I want transfers touching several shards to commit together.
 
 **Reviewed priority / gate:** P0 / M2.
@@ -231,6 +254,10 @@ Review checks:
 
 - Persist scope/request key/operation/payload hash and outcome under the same transactional authority as effects; changed-payload key reuse fails.
 - Document authorized lookup, dedup retention and client retry horizon; expired history yields reconciliation/explicit expiry rather than blind reexecution.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- A failed distributed query cancels sibling workers and resolves transaction state; replay is allowed only for a declared safe whole attempt before effects/results escape. Partial stream delivery and arbitrary interactive writes require explicit failure/reconciliation, not fragment replay. B4 §22.5.4.
 
 **E04-S04 — Safe read paths.** As a reader, I want documented freshness and consistent results during failover.
 
@@ -260,6 +287,10 @@ Review checks:
 - Bound input size, parse depth, binding work and expression complexity before resource exhaustion.
 - Test equality/order agreement between SQL, wire/JSON codecs and persistent comparators, including mixed schema versions and unsupported casts.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Specify SQL bags and NULL-aware IN/NOT IN, EXISTS, scalar-subquery cardinality and outer-join rewrites. JSON fixtures distinguish SQL NULL, JSON null and missing paths; define duplicate-key/numeric/depth rules and separate SQL JSON from administration JSON. B4 §§3.6–3.8, 8.1.2, 16.4.4.
+
 **E05-S02 — Relational operations.** As an application developer, I want CRUD, joins and constraints without application-side integrity workarounds.
 
 **Reviewed priority / gate:** P0 / M1–M2.
@@ -270,6 +301,10 @@ Review checks:
 
 - Exercise pipelining, external sorting, grouping and supported join operators on datasets larger than memory, with duplicate/null/empty inputs.
 - Memory grants precede allocation; skewed hash partitions have a terminating fallback, and cancel/error paths release cursors, locks where allowed, pins and scoped spill.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- E24-S01–S04 own catalog dependencies, read-only invoker views, identities and named constraint lifecycle; this story remains their end-to-end SQL acceptance gate. Test anti/semi joins, empty aggregates and mutation plans that must not reprocess a row after changing its indexed key. B4 §§4.2–4.5, 16.4.4, 16.6.3.
 
 **E05-S03 — Distributed optimizer.** As an operator, I want efficient plans and predictable resource limits.
 
@@ -282,6 +317,10 @@ Review checks:
 - Maintain versioned cardinality/width/null/distinct statistics plus sampled skew; cap planner search and use a conservative stale-statistics fallback.
 - Explain estimates and actual rows/network/spill/fan-out; verify pushdown/top-k/joins preserve collation, NULL, volatility and security barriers under concurrent memory pressure.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- E25-S01–S03 implement statistics, physical properties and plan validity; this story certifies their integrated plans. Test unmatched outer-join rows across workers, parameter skew and cost versus total parallel resource grants. Runtime filters in E25-S04 remain P2.
+
 **E05-S04 — Driver and bulk profile.** As a Falcone maintainer, I want standard clients and import/export tools to work within the declared subset.
 
 **Reviewed priority / gate:** P0 / M1–M3.
@@ -292,6 +331,10 @@ Review checks:
 
 - Certify cursor/result lifecycle, failed-transaction state, cancellation and reconnection using the named driver and protocol versions.
 - Bulk loading respects admission/index/constraint maintenance and transactional batch boundaries; a mid-stream failure reports what committed without unbounded buffering.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- E26 owns streaming codec, import checkpoint, bulk-index and export contracts; this story certifies the named driver/protocol surface. A transaction-scoped COPY and a partially committed import job must remain observably distinct.
 
 ## E06 — Sharding and distributed indexes
 
@@ -309,6 +352,10 @@ Review checks:
 
 - Prove one/few replicated ranges can grow while logical schemas/endpoints remain stable; compatible small tenants/tables do not require dedicated groups.
 - Version the hash-token mapping independently of node count; expose pre-splitting, range-policy hotspots and indivisible colocation limits for oversized entities.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Placement preview distinguishes logical normalization from physical colocation and explains cross-shard FK/index cost; no automatic denormalization or duplication of authoritative rows to hide a join cost. B4 chs. 6–7 and §22.7.4.
 
 **E06-S02 — Split and move.** As an operator, I want the cluster to redistribute data while clients continue using logical tables.
 
@@ -371,6 +418,10 @@ Review checks:
 - Define reset and failed-transaction behavior when sessions/clients reconnect; results and cancellation remain scoped.
 - Prepared-plan invalidation observes schema/policy/distribution versions, with bounded refresh and no silent feature emulation.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Account for per-session prepared metadata plus shared plan-cache entries/variants; preserve session identity/sequence state and invalidate plans by E25-S03 dependencies without a reconnect/recompile storm.
+
 **E07-S03 — Fair admission.** As a tenant, I want my reserved workload to survive another tenant's overload.
 
 **Reviewed priority / gate:** P0 / M1–M2.
@@ -421,6 +472,10 @@ Review checks:
 - Verify policy enforcement survives optimizer pushdown, joins, bulk writes, backfill and schema publication.
 - Define revocation behavior for active sessions/transactions and CDC; privileged stale caches fail closed without unilaterally aborting prepared decisions.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Authorize logical view expansion, catalog dependency traversal and statistical inspection; validate role/policy changes in reused plans. Materialized aggregate eligibility and revocation are separately gated in E27-S03. B4 §§4.7.3, 9.8.
+
 **E08-S03 — Transport, secrets and encryption.** As an operator, I want credentials and durable data protected through rotation/recovery.
 
 **Reviewed priority / gate:** P0 / M1–M4.
@@ -460,6 +515,10 @@ Review checks:
 - Core JSON/gRPC administration is M1; capability/version/limit discovery reflects implementation rather than planned features.
 - Test int64/decimal strings, omitted/null/default fields and supported unknown-field preservation across old/new clients and servers.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Include typed view/sequence/constraint definitions, dependency impact, analyze jobs, imports/exports and plan diagnostics in capability discovery at their delivery gates; materialized-view endpoints stay disabled until E27 is certified.
+
 **E09-S02 — Reviewable idempotent plans.** As an administrator, I want to preview and safely apply a schema or placement change.
 
 **Reviewed priority / gate:** P0 / M1–M2.
@@ -481,6 +540,10 @@ Review checks:
 
 - Use E04-S04 consistent cuts and durable pins; schema leases gate old/new writer compatibility and reclamation.
 - Test index build/drop concurrently with split/move, leader loss and mixed-version writers, verifying no missing index rows or prematurely reclaimed columns.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Use E24 dependency/precondition checks, E24-S04 constraint validation and E26-S03 bulk index construction through this single DDL state machine; invalidate incompatible plans before serving with a changed descriptor.
 
 **E09-S04 — Administrative UI/CLI.** As a workspace administrator, I want database/role/index/backup/session controls in Falcone's console and a CLI.
 
@@ -531,6 +594,10 @@ Review checks:
 
 - Verify candidate generation is conservative across all persisted versions and topology transitions, not just the in-memory structure.
 - Bound cell explosion and row fetch work; large-geometry fallback remains correct under memory pressure and authorization filters.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Compare cell-cover and bounding-index candidates on representative spatial workloads; a new R-tree is not required merely by the book. Verify candidate intersection/union, deduplication and exact recheck preserve every match. B4 §§14.10, 24.4.
 
 **E10-S04 — Distributed spatial queries.** As a tenant, I want radius/location queries to work across my shards with predictable cost.
 
@@ -632,6 +699,10 @@ Review checks:
 - Run clean-directory restore in M1, clean-cluster restore in M2 and object-inclusive restore in M3.
 - Assign a new cluster incarnation; delayed old requests, dedup records, file IDs and cache identities cannot be confused with current authority.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Restore catalog dependency IDs, sequence high-water/generation state and relevant durable job manifests; fence pre-restore allocation holders/workers. Export-only profiles and physical/PITR recovery remain distinct.
+
 **E12-S04 — Disaster recovery drills.** As an operator, I want known recovery limits for node/region and logical data loss.
 
 **Reviewed priority / gate:** P0 / M2–M4.
@@ -681,6 +752,10 @@ Review checks:
 
 - Acquire snapshot and stream retention through one protected-cut protocol, including concurrent split/DDL/prepare.
 - Define overlap deduplication, authorization revocation and bounded slow-consumer behavior; prove no missing change at the handoff.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Materialized-view bootstrap in E27 uses the same gap-free snapshot/CDC boundary; derived progress advances only for complete source transactions and compatible topology/schema coverage.
 
 **E13-S04 — Falcone event adapters.** As a platform integrator, I want Kafka/realtime delivery without affecting database commit correctness.
 
@@ -760,6 +835,10 @@ Review checks:
 - Assess shard/distribution keys, index placement, participant count, hot entities and query memory alongside SQL/extension compatibility.
 - Unsupported advanced SQL/vector workloads remain blocked until named certification evidence exists; priority does not equal implemented support.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Inventory view security/update behavior, sequence caching/reset semantics, deferred constraints, JSON path/numeric behavior and materialized refresh requirements; unsupported semantics remain migration blockers.
+
 **E15-S02 — Snapshot plus PostgreSQL CDC.** As an operator, I want a repeatable import without lost source writes.
 
 **Reviewed priority / gate:** P0 / M3–M4.
@@ -770,6 +849,10 @@ Review checks:
 
 - Exercise source snapshot/CDC handoff through source reconnect, replay duplication and target split/failover.
 - Checkpoint source position and target transactional effect coherently; bound source slot/history growth and report unresolved source transactions.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Reuse E26 import framing/progress primitives without replacing PostgreSQL snapshot/LSN transaction handoff. Coordinate source sequence state and target allocation fencing explicitly; imported numeric IDs alone do not set a safe high-water mark.
 
 **E15-S03 — Semantic reconciliation.** As an application owner, I want proof that my supported workload still works.
 
@@ -821,6 +904,10 @@ Review checks:
 - Expose allocation/metadata queues, lock bytes/waits, prepared age, safe-frontier blockers, split pause, spill/exchange and retry amplification.
 - Correlate these with compaction/backup/movement reservations and bounded labels; dashboards separate safety, availability and recovery lag.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Expose statistics age/coverage, plan invalidations, admitted versus actual parallelism, sequence reservation pressure, import committed batches and later materialized frontiers using bounded-cardinality metrics.
+
 **E16-S03 — Upgrade and downgrade boundaries.** As an operator, I want version changes without accidental unreadable data.
 
 **Reviewed priority / gate:** P0 / M2–M4.
@@ -871,6 +958,10 @@ Review checks:
 - Cover skewed spill joins, local/global indexes, NULL/collation equality, volatile expressions and security-preserving optimizer rewrites.
 - Use transaction histories for claimed isolation and point-operation histories for claimed linearizability; neither substitutes for the other.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Add semantic counterexamples for NULL-aware anti joins, duplicates, outer joins, Halloween-style update revisits, view/RLS revocation, identity failover, and import/export equality. B4 §§3.6–4.7, 16.4.4, 16.6.3, 25.3.1.
+
 **E17-S03 — Capacity and fairness evidence.** As a product owner, I want defensible scalability claims.
 
 **Reviewed priority / gate:** P0 / M0–M4.
@@ -881,6 +972,10 @@ Review checks:
 
 - Publish load curves for gateways, execution, storage and metadata, plus idle/active range-count envelopes and cache-size controls.
 - Separate steady state from rebalancing/compaction/failure periods; report client queueing, errors, retries and repeated-run variation without averaging percentiles.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Distinguish single-query speedup from workload scale-up; report startup/skew costs, total CPU/network/memory, plan compilation/cache behavior and hot-key/sequence contention. Smaller elapsed time alone does not prove cheaper or more scalable execution. B4 §§20.4.2, 22.7.2, 25.2.
 
 **E17-S04 — Production-candidate gate.** As a release owner, I want clear acceptance criteria before supporting durable customer workloads.
 
@@ -921,6 +1016,10 @@ Review checks:
 - Keep analytical/branch manifests, garbage collection and resource isolation separate from transactional S3 object references.
 - Require named workload/cost evidence before adding a second execution/storage tier; branch semantics and retention are independently designed.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Business valid-time intervals, system-versioned temporal tables, MVCC read views, PITR and branches are distinct contracts. The current baseline promises no SQL temporal history; any later temporal feature must specify interval overlap/keys, retention and query semantics. B4 §7.10.
+
 **E18-S03 — Search and advanced SQL.** As a Falcone developer, I want richer search and query features when core semantics are stable.
 
 **Reviewed priority / gate:** P2 / M5.
@@ -959,6 +1058,10 @@ Review checks:
 
 - Specify comparator, schema, hash and optional-field evolution alongside the common envelope and every file-specific format.
 - Fixtures cover cross-platform byte order, numeric edge cases, malformed lengths and conflicting feature bits; source books do not freeze Falcone bytes.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Extend native catalog encoding fixtures to dependency descriptors, sequence reservations and job/generation manifests when introduced; do not serialize Rust layout or import external SST files.
 
 **E19-S02 — File identity and allocation.** As a storage engineer, I want stable domain/file identities so cache, restore and maintenance cannot confuse old and new data.
 
@@ -1031,6 +1134,10 @@ Review checks:
 
 - Test persisted term/vote state, old-term log entries, leader changes, snapshot boundaries and committed-versus-applied lag.
 - Do not remove either WAL without a separately modeled replacement durability contract; application state and applied index recover atomically.
+
+Fourth-book review checks (B4, 4 November 2026):
+
+- Verify commands with resolved volatile values and sequence reservations replay to equal logical state under different clocks, schedulers and supported binaries; no follower-side reevaluation of SQL defaults.
 
 **E20-S04 — Checkpoint and log retention fences.** As an operator, I want old WAL reclaimed only after equivalent recovery state exists.
 
@@ -1132,6 +1239,10 @@ Review checks:
 - Keep the latest version required at each retained frontier and every unresolved decision dependency, not just versions newer than one timestamp.
 - Generate cross-level delete/reinsert histories with active backups/CDC and topology changes; neither stale rows nor deleted objects reappear.
 
+Fourth-book review checks (B4, 4 November 2026):
+
+- Include import/export and later materialized-generation pins in the same bounded retention accounting; canceled jobs release only unneeded pins and cannot reclaim data still protected by another consumer.
+
 **E22-S04 — Obsolete files and orphan recovery.** As an operator, I want reclaimable bytes removed without deleting a live file.
 
 **Reviewed priority / gate:** P0 / M1–M3.
@@ -1192,6 +1303,222 @@ Review checks:
 
 - Add manifest/WAL partial-prefix races, retained intents, overlapping tombstones, split staging and mixed-version decoding faults.
 - Separate process crash from simulated power loss and actual device/filesystem qualification; persist reproducible seeds and independent review evidence.
+
+## E24 — Relational catalog, views and identity contracts
+
+Goal: Make already-promised logical objects independently implementable, secure and recoverable as the database grows.
+
+**Priority / gate:** P0 / M1–M2.
+
+**Dependencies:** E02/E04/E05 core interfaces, E08 policy and E09 catalog commands; E03/E06 for distributed slices. Dependencies apply to the relevant slice, not completion of every umbrella epic.
+
+**Review basis:** B4 §§4.2, 4.4, 4.5.6–4.5.8, 4.7.3, 13.4, 25.1.7; findings D01–D03.
+
+**E24-S01 — Catalog dependency graph and safe object evolution.** As a schema owner, I want schema changes to report and preserve dependent objects.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Persist stable object IDs and typed dependency edges for tables, columns, types, constraints, views, indexes, sequences and policy versions; names are scoped aliases, not physical identities.
+- SQL DDL and JSON plans use the same resolver and expected-version preconditions. DROP defaults to RESTRICT; an explicitly requested CASCADE returns the exact authorized affected set and is applied only if that set/version still matches.
+- Test concurrent rename/drop/create, recursive view definitions, bounded dependency traversal and prepared-plan invalidation. A stale name cannot silently bind an existing plan to a different object.
+- Local catalog changes survive M1 restart/restore; replicated changes survive M2 leader loss and mixed schema versions. Introspection exposes only authorized objects and implemented capabilities.
+
+**E24-S02 — Read-only logical views with explicit authorization.** As an application developer, I want reusable relational views with predictable access rules.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Store a versioned bound definition, stable output columns and dependency IDs. Freeze SELECT-star expansion at creation; reject cycles and definitions beyond the nesting/expansion budget.
+- Initial views are read-only and use invoker permissions plus base-table RLS. Define this compatibility boundary explicitly; reject definer-rights and view DML until separately certified.
+- At execution validate view/base-object privileges and current policy dependencies, including cached plans and nested views. Revocation cannot leave a privileged cached expansion usable past the stated revocation window.
+- Compare direct and view-expanded results for NULLs, duplicates, outer joins and column changes; test cross-scope access, schema change during execution, restart and distributed planning. Unsupported definitions fail before publication.
+
+**E24-S03 — Replicated sequence and identity allocation.** As an application developer, I want generated identifiers that remain unique under concurrent clients and failover.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Specify CREATE/ALTER sequence and identity ALWAYS/BY DEFAULT behavior, bounds, increments, ownership and permissions. Initial noncycling sequences never wrap silently; unique table constraints remain authoritative for explicit values.
+- Allocate disjoint durable number ranges from a replicated per-sequence authority before serving cached values. Alteration/restart must drain or verifiably fence all affected holders, including standalone next-value calls; an unreachable holder blocks the change unless fencing is proven. Avoid a single cluster-wide counter.
+- Document that allocation survives transaction rollback, gaps are permitted, and generated values do not imply commit order. Retries resolve a committed row/result through the transaction outcome, rather than substitute a new identity for an unknown outcome.
+- Test concurrency, abandoned caches, quorum loss, exhaustion, sequence alteration and explicit inserted values. Restore/migration reconcile high-water state and invalidate old allocation generations; session-local last-value state never leaks through multiplexing.
+
+**E24-S04 — Named constraints and verified online validation.** As a schema administrator, I want constraint lifecycle and errors that agree across SQL and administration APIs.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Persist stable names/IDs and declared timing for NOT NULL, CHECK, UNIQUE and FK constraints. Freeze CHECK unknown-value behavior, unique NULL policy and composite-FK NULL matching in the compatibility matrix and SQL/JSON fixtures.
+- Initial checks are immediate with documented statement boundaries. Reject DEFERRABLE, cross-table CHECK assertions and unsupported cascade actions at DDL validation; do not parse and ignore them.
+- A newly added online constraint protects new writes before scanning old data, pins a consistent cut and reconciles intervening changes before VALIDATED publication. Failed validation leaves an explicit state, never a silently trusted constraint.
+- Only validated constraints may justify correctness-changing optimizer rewrites. Test cyclic FKs under the supported profile, referenced deletes, uniqueness races across shards, NULL combinations, DDL cancellation and leader change; redact error details outside caller scope.
+
+## E25 — Statistics lifecycle and distributed plan control
+
+Goal: Turn the optimizer umbrella into measurable statistics, placement-aware planning and bounded reusable execution plans.
+
+**Priority / gate:** P0; S04 P2 / M1–M2; S04 M5.
+
+**Dependencies:** E05 operators/planner and E07 budgets; E03/E06 descriptors for distributed planning; E08/E09 policy/catalog. Dependencies apply to the relevant slice, not completion of every umbrella epic.
+
+**Review basis:** B4 §§14.6, 16.3–16.6, 20.4.2, 22.3–22.7, 22.9.3, 25.1.4–25.1.5; findings D04–D07.
+
+**E25-S01 — Scoped statistics collection and refresh.** As a database operator, I want manual and automatic statistics maintenance with visible age and cost.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Provide SQL ANALYZE for the certified subset and equivalent JSON jobs. Track sample method/size, row/byte/null/distinct estimates, heavy hitters, histogram boundaries, schema and topology version, coverage and collection time.
+- Combine per-range samples with population weighting; do not sum distinct counts or average histograms as if that were valid. Implement a documented mergeable estimator or global resample; detect missing/overlapping coverage during splits.
+- Schedule bounded refresh after bulk loads, relevant churn or sustained estimate error, with cooldowns and job deduplication. Missing/stale statistics select a conservative plan and never authorize omitting data.
+- Keep sampled values, histograms and feedback within privileged scope. Test unequal shard sizes, correlated columns, all-NULL data, hot keys, canceled jobs and splits. Extended multicolumn statistics require explicit capability support, not an independence assumption presented as fact.
+
+**E25-S02 — Physical properties and bounded parallel plans.** As a query engineer, I want plans that account for data placement and total resource cost.
+
+**Reviewed priority / gate:** P0 / M2.
+
+Acceptance criteria:
+
+- Represent required/provided ordering, hash/range partitioning, colocation, placement generation and execution location in the physical plan. Insert explicit hash/range/broadcast/gather/ordered-merge exchanges only where needed.
+- Cost colocated, repartitioned and bounded broadcast joins using row width, network volume, startup cost, skew and degree of parallelism. Reserve the aggregate replicated build-side memory before broadcasting; estimates alone do not permit unbounded allocation.
+- Preserve SQL bags, NULLs and unmatched-row ownership in outer/semi/anti joins; test a row unmatched on one worker but matched on another. Partial AVG carries sum and count; global ordering and limit semantics survive exchange.
+- Compare scale-up and speedup under fixed replication/durability and competing OLTP load. EXPLAIN reports placement properties, workers, exchanges, grants and estimated/actual transfer; planner search and parallelism stay inside admitted limits.
+
+**E25-S03 — Prepared-plan validity and bounded performance feedback.** As an application owner, I want reused plans that stay correct as parameters, schema and policies change.
+
+**Reviewed priority / gate:** P0 / M1–M2.
+
+Acceptance criteria:
+
+- Separate semantic validity from cost quality. Cache keys include scope, effective policy/role, parameter types, object/schema dependencies and semantic settings; physical plans also validate relevant placement and format/collation capabilities.
+- Invalidate or safely rebind on DDL, policy revocation, changed object identity and incompatible distribution changes. Never reuse a plan solely because normalized SQL text matches.
+- Bound cache bytes, variants and compilation work; compare generic and parameter-sensitive plans for hot versus rare keys. Statistics refresh can trigger budgeted reoptimization with hysteresis, without becoming a global invalidation storm.
+- Publish redacted query/plan fingerprints, estimate error, memory/spill/network and invalidation reasons. A manual diagnostic override still passes security, semantics and resource checks. Do not restart executed writes or delivered result streams merely to obtain a faster plan.
+
+**E25-S04 — Safe runtime filters and adaptive read optimization.** As a query engineer, I want less cross-node traffic for selective joins without losing results.
+
+**Reviewed priority / gate:** P2 / M5.
+
+Acceptance criteria:
+
+- Support bounded runtime Bloom/semijoin filters for a named inner/semi-join subset; mark build completeness and bind filters to the same query attempt, schema, equality/hash semantics and read context.
+- An incomplete, missing, stale or incompatible filter passes rows through or fails the query explicitly; it never rejects potentially matching rows. False positives are removed by the exact join.
+- Reject unsafe preserved-side outer-join and NULL-aware anti-join filtering until independently proven. Test duplicates, NULLs, composite keys, collation, high false-positive rates and worker failure.
+- Cost filter construction/distribution and test selective and nonselective workloads. Any adaptive restart respects the query replay contract and end-to-end budget; speculative write execution and uncontrolled retries are prohibited.
+
+## E26 — Resumable bulk data and index operations
+
+Goal: Move large datasets and build indexes with explicit commit boundaries, durable progress and first-party storage safety.
+
+**Priority / gate:** P0; S02 P1 / M1–M3.
+
+**Dependencies:** E04/E05 transactional writes and codecs, E07/E08 admission/security, E09 jobs, E12 consistent cuts; E11 only for managed-object transport, E19–E22 native files. Dependencies apply to the relevant slice, not completion of every umbrella epic.
+
+**Review basis:** B4 §§14.7, 19.3–19.6, 22.2, 25.1.5.3, 25.3.2; findings D08–D09.
+
+**E26-S01 — Streaming COPY and typed bulk codecs.** As an application developer, I want large imports with predictable parsing, errors and transaction semantics.
+
+**Reviewed priority / gate:** P0 / M1–M3.
+
+Acceptance criteria:
+
+- Certify the chosen COPY FROM/TO profile and CSV/JSON Lines codecs with explicit delimiter/quote/escape/encoding, field order, NULL/missing/default and numeric/time conversion rules. Frame multiline CSV correctly across transport chunks.
+- Bound record size, nesting, decompression, parser buffers and outstanding writes; propagate cancel and downstream pressure. Reject invalid records without logging sensitive values.
+- COPY inside a user transaction follows its atomic transaction/error-state contract and configured transaction limits. A separate bulk-job API may commit batches; it never reports whole-file atomicity.
+- Every admitted row goes through policy, types, constraints, indexes, identity and durable transaction paths. Test invalid middle records, disconnect/unknown outcome, cancellation, exact counters and statement rollback behavior.
+
+**E26-S02 — Durable resumable import jobs.** As a database administrator, I want imports that resume after failure without duplicating committed batches.
+
+**Reviewed priority / gate:** P1 / M3.
+
+Acceptance criteria:
+
+- Persist authenticated scope, immutable source identity/checksum, parser version/options, target schema/policy dependencies, job generation and batch IDs. For object inputs require approved storage bindings; do not fetch arbitrary caller URLs.
+- Commit each batch and its durable progress/outcome under one atomic decision, even across shards. Resume queries unknown decisions before replay; altered source bytes/options fail instead of continuing at an unrelated offset.
+- Document partial-commit visibility and stop/cancel boundaries. Checkpoint at validated record boundaries; compressed streams need a qualified index or deterministic replay. Do not treat an arbitrary byte offset as a CSV record boundary.
+- Exercise crashes before/after commit, duplicate workers, permission revocation, expired source credentials, schema change and shard movement. Bound rejects, retained source data and retry history; reconcile accepted/rejected/committed rows and identity state before completion.
+
+**E26-S03 — Native external-sort index construction.** As a storage and schema engineer, I want efficient bulk index creation that preserves durability and visibility.
+
+**Reviewed priority / gate:** P0 / M2–M3.
+
+Acceptance criteria:
+
+- Use bounded external runs and merge fan-in to build first-party index files, with comparator/codec/schema versions and checksums. Space, I/O and replication reservations are required before work starts.
+- For a live table protect a consistent snapshot, capture/apply concurrent changes, validate uniqueness and publish through the existing E09 DDL state machine. A private staging index cannot be selected by ordinary queries.
+- Integrate file installation with the chosen native manifest/WAL/replication protocol; verify all members can recover installed state before acknowledgement. Never bypass row/constraint checks or disable required durability to claim bulk speed.
+- Test duplicate keys spanning runs/shards, concurrent updates/deletes, schema leases, movement, disk full, corrupted runs and crash at publication. Failure leaves the old public index usable and orphan staging files safely reclaimable.
+
+**E26-S04 — Consistent resumable export manifests.** As a workspace owner, I want portable exports with a defined snapshot and completeness record.
+
+**Reviewed priority / gate:** P0 / M3.
+
+Acceptance criteria:
+
+- Bind an export to an authorized consistent cut, object/schema/policy versions, column/type encodings and topology lineage. Enumerate logical key ranges exactly once despite concurrent splitting.
+- Persist chunk identities, row counts, canonical content checksums and completion status. Resume validates the same protected cut; an expired pin fails explicitly instead of mixing snapshots.
+- Recheck authorization within the declared revocation window, encrypt protected output, and reserve retention/egress budgets. Managed S3 references require an explicit references-only or object-complete export profile.
+- Restore/reimport into a clean compatible database and compare canonical rows/constraints/identity behavior. Declare that logical export is neither physical backup nor PITR; export completion requires a verified manifest, not successful job submission.
+
+## E27 — Managed materialized views
+
+Goal: Add explicitly maintained derived relations for repeated queries without weakening OLTP correctness or authorization.
+
+**Priority / gate:** P2 / M5.
+
+**Dependencies:** M4 core evidence; E24 dependencies/security, E25 planning, E09/E12 consistent jobs/cuts, E13 retained changes and E26 rebuilds. Dependencies apply to the relevant slice, not completion of every umbrella epic.
+
+**Review basis:** B4 §§4.2.3, 16.5, 22.7.5, 23.6.3, 25.1.4.2; findings D10–D11.
+
+**E27-S01 — Versioned full-refresh materialized views.** As an application analyst, I want stored query results with observable refresh state.
+
+**Reviewed priority / gate:** P2 / M5.
+
+Acceptance criteria:
+
+- Define materialized views as catalog objects with stable IDs, bound definitions, source dependencies, output schema and an explicit refresh mode. Start with deterministic read-only definitions; reject volatile functions and unsupported sources.
+- Build a full generation from a protected consistent cut into private native storage, validate it, then atomically publish its manifest. Readers pin one generation; failed refresh leaves the last valid generation visible with accurate age/status.
+- Expose create/refresh/status/pause/drop through typed administration. Schema incompatibility blocks refresh/publication and requires a reviewed rebind or rebuild.
+- Test cancellation, node loss, concurrent DDL/splits, readers during publication and cleanup. Account for old/new generation storage, object references and backup pins.
+
+**E27-S02 — Incremental single-table aggregate maintenance.** As an application analyst, I want lower refresh cost for a precisely supported aggregate subset.
+
+**Reviewed priority / gate:** P2 / M5.
+
+Acceptance criteria:
+
+- Initially support deterministic single-table selection/projection and grouped COUNT/SUM/AVG only, with documented bag/NULL/numeric semantics. Reject incremental joins, DISTINCT, MIN/MAX deletions and other unsupported shapes or use explicit full refresh.
+- Bootstrap from a consistent snapshot with a gap-free committed-change handoff. Apply complete source transactions; persist aggregate mutations and consumed progress atomically with idempotent replay and split lineage.
+- Maintain row/non-NULL counts and sums as needed; distinguish a zero sum from an empty group and derive AVG from sum/count. Include SQL global-empty aggregate behavior and update-as-old/new effects.
+- Detect expired CDC history or incompatible schema and rebuild. Compare every published frontier with full recomputation at that frontier under duplicates, NULLs, deletes, updates, restart and duplicate delivery.
+
+**E27-S03 — Freshness, security and retention of derived results.** As a tenant administrator, I want materialized results that expose their age and respect current access.
+
+**Reviewed priority / gate:** P2 / M5.
+
+Acceptance criteria:
+
+- Advertise data frontier, generation, source coverage, schema/policy versions and refresh status; do not turn the slowest observed timestamp into a safe global frontier without the consistent-cut protocol.
+- Begin with explicit reads of a complete published generation. A requested freshness bound waits or fails if unmet. Asynchronous results never enforce FK/UNIQUE/CHECK constraints or silently replace fresh transactional reads.
+- Initial eligibility requires a common, versioned authorization domain and no principal-dependent base RLS unless an equivalent read-time enforcement proof exists. Otherwise reject materialization; a tenant label alone does not make an aggregate safe.
+- Revocation/policy changes fence incompatible generations and caches; backup, object GC and view drop preserve active readers and protected generations. Test cross-tenant/role access and revocation during refresh and restore.
+
+**E27-S04 — Measured view selection and qualified query rewriting.** As a database operator, I want evidence that a derived view saves resources without changing query meaning.
+
+**Reviewed priority / gate:** P2 / M5.
+
+Acceptance criteria:
+
+- Measure workload-level read savings against write/change-processing, storage, rebuild and retention cost. Produce a reviewable recommendation; do not automatically create/drop objects from observed query traffic.
+- Initial ordinary SQL uses base relations unless the user explicitly addresses the materialized view. Automatic rewrites are a separate capability gate requiring semantic, bag/NULL, security, schema and snapshot/freshness equivalence.
+- For any certified rewrite prove both eligibility and fallback; EXPLAIN reports the chosen generation/frontier and reason. Never substitute a stale view into a current serializable transaction without the required semantics.
+- Benchmark full refresh versus incremental maintenance, source write latency and competing tenants. Recovery or OLTP overload pauses derived work inside its budgets and reports lag rather than consuming the protected recovery reserve.
 
 ## Suggested first implementation slice
 

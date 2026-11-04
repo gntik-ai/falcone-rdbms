@@ -29,6 +29,23 @@ The [review](documentation-review.md) narrows initial certification to concrete 
 
 Storage-engine ownership is a confirmed requirement. PostgreSQL migration does not copy source pages or WAL into Falcone's engine as native files. Logical source changes are decoded, validated and written through the first-party storage/transaction path. Native backups additionally bind Falcone file-format/codec/key versions; see [native storage](native-storage.md) for compatibility and conversion gates.
 
+## Fourth-book compatibility additions
+
+These are proposed profiles to certify, not implemented compatibility claims. They refine broad SQL/driver rows above.
+
+| Area | Initial contract | Migration consequence |
+| --- | --- | --- |
+| Logical views | Bound read-only invoker views; explicit columns/dependencies and base-object RLS | Definer-rights and updatable-view workloads remain blocked or need an approved rewrite |
+| Sequences/identity | Durable reservations, gaps, no commit-order promise; ALWAYS/BY DEFAULT and supported bounds explicit | Reconcile source state and allocation generations; explicit imported IDs alone do not advance a safe high-water mark |
+| Named constraints | Immediate checks; CHECK accepts TRUE/UNKNOWN, default NULL-distinct UNIQUE, FK MATCH SIMPLE | Unsupported DEFERRABLE/MATCH/NULL modes and cross-table assertions are rejected, never ignored |
+| SQL JSON | Separate SQL NULL/JSON null/missing, declared duplicate-key/numeric/path rules | PostgreSQL jsonb operators and binary representation need individual certification |
+| COPY and imports | Certified streaming protocol subset; transaction-scoped COPY versus explicitly batched jobs | No automatic binary COPY, whole-file atomicity or arbitrary dump compatibility |
+| Prepared plans | Versioned binding and scoped cache invalidation | Certify supported metadata/error behavior under concurrent DDL and policy changes |
+| Materialized views | P2/M5 full refresh, then a narrow incremental subset | Not in baseline; source refresh/security semantics must be assessed before migration |
+| Temporal data | Internal MVCC/PITR only; no implicit SQL temporal-table profile | System-time/valid-time semantics and constraints require separate future support |
+
+E24–E26 implement detailed contracts consumed by E05/E09/E15. Migration remains blocked when a required capability is only planned. The [new review](database-system-concepts-review.md) explains these choices; the [contracts](relational-operations.md) specify failure and authorization boundaries.
+
 ## Falcone integration changes
 
 Introduce a backend-neutral database interface around provision, inspect, plan/apply schema, execute data query, manage scoped identity, stream changes, backup/restore and report capabilities. Keep the current PostgreSQL implementation alongside `falcone-rdbms`.

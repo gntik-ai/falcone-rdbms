@@ -2,7 +2,7 @@
 
 Status: proposal; all guarantees below are implementation requirements and release gates, not current behavior. See [research](research.md) for source evidence and [roadmap](quality-and-roadmap.md) for qualification.
 
-The 3 November [documentation review](documentation-review.md) prioritizes the essential features and maps all three uploaded books to this design. The [distributed contracts](distributed-contracts.md) refine the growth profiles, authority, split state machine, snapshots, retry retention and bounded query execution described here. Those refinements supersede the earlier informal split outline.
+The 3 November [documentation review](documentation-review.md) prioritizes the essential features and maps B1–B3 to this design. The 4 November [fourth-book review](database-system-concepts-review.md) adds B4 and the [relational/data-operation contracts](relational-operations.md), including catalog dependencies, sequences, statistics, plan reuse, bulk operations and later materialized views. The [distributed contracts](distributed-contracts.md) refine the growth profiles, authority, split state machine, snapshots, retry retention and bounded query execution described here. Those refinements supersede the earlier informal split outline.
 
 ## Product boundary
 
@@ -52,7 +52,11 @@ Logical identity: `cluster → tenant → workspace → database → schema → 
 
 Conceptual row key: `(tenant_id, workspace_id, database_id, placement_group_id, distribution_value, table_id, primary_key, version)`. Actual binary encoding, field order and version ordering are frozen only after E01/E02 benchmarks. A secondary index uses its own index ID and normalized indexed values, with a row locator. All paths include security scope, including global indexes, blobs, CDC checkpoints, caches and temporary spill files.
 
-Catalog entries include columns/types, constraints, indexes, placement, policy versions, object storage bindings, migration state and schema version. Separate the logical catalog from the physical shard directory. Cache entries are keyed by security scope and epoch, not only SQL text or table name.
+Catalog entries include columns/types, named constraints and validation states, indexes, view definitions, sequence descriptors, dependency edges, statistics descriptors, placement, policy versions, object storage bindings, migration state and schema version. Separate the logical catalog from the physical shard directory. Cache entries are keyed by security scope and epoch, not only SQL text or table name.
+
+Logical definitions bind stable IDs and versions, not names alone. Dependency-aware DDL defaults to RESTRICT and previews the exact authorized CASCADE closure. Initial logical views are read-only with invoker/base-object permissions and RLS; definer-rights and view updates are separate compatibility gates. E24 provides these details beneath E03/E05/E09.
+
+Sequence allocation uses durable disjoint ranges from per-sequence replicated authority, with fenced holder generations and explicit gaps/overflow/restore behavior. It is not a global commit clock or gap-free business numbering. Actual row values are resolved before deterministic replication. See the [identity contract](relational-operations.md#identity-and-sequence-allocation).
 
 ## Persistence and consensus
 
@@ -78,7 +82,7 @@ Use MVCC versions for consistent historical reads, backups and recovery. Track a
 
 Transactions are identified by a stable ID and attempt/ownership epoch. A hashed transaction-status key distributes decision records across system shards. The status record includes participants, deadline, state, coordinator fencing epoch, and the immutable final decision. Freeze participant membership before committing; late participants force a valid protocol transition or abort. An HA timestamp allocator initially colocated with metadata allocates monotone epochs/timestamps for MVCC; batching and failover must preserve dependencies and account for unused reservations. Catalog, placement, allocation and resolution use separate budgeted queues. Allocation is a benchmarked potential bottleneck, not an assumed infinitely scalable service or a global snapshot proof.
 
-The initial read/write transaction algorithm locks the accessed keys and index ranges, reads the latest committed version under those locks, and holds locks through final decision. Predicate protection includes absent keys, secondary-index gaps, full scans, and constraint checks. Fall back to a coarse table/index lock when a precise range cannot be derived. Retrying a transaction must not reuse stale reads. Do not mix arbitrary snapshot reads into this algorithm and assume serializability remains intact.
+The initial read/write transaction algorithm locks the accessed keys and index ranges, reads the latest committed version under those locks, and holds locks through final decision. Predicate protection includes absent keys, secondary-index gaps, full scans, and constraint checks. Fall back to a modeled coarse table/index protection when a precise range cannot be derived. Coarse and fine locks share an explicit intention/coverage hierarchy; table-wide protection spans the necessary shard participants. Escalation acquires covering protection before releasing fine locks and cannot abandon prepared promises. This must not require a central catalog/root-lock RPC per row. Retrying a transaction must not reuse stale reads. Do not mix arbitrary snapshot reads into this algorithm and assume serializability remains intact.
 
 Single-shard transactions use a one-phase path where all writes, constraints and the decision can be replicated atomically in that group. If an operation adds a participant, use the distributed path before committing.
 
@@ -129,6 +133,14 @@ Implement a low-overhead row/point-operation path for OLTP. Use batches for scan
 Collect versioned cardinality/width/null/distinct statistics and sampled skew, with stale-statistics fallback. Budget optimizer search itself. Physical operators obtain real memory/temp-space grants before execution; external sort has bounded merge fan-in, and skewed hash joins have terminating fallbacks. Bounded exchanges propagate cancellation and slow-reader backpressure. Rewrites preserve NULL/collation/volatility/security-barrier semantics. See the [execution contracts](distributed-contracts.md#query-execution-required-for-useful-scale), based on B1 chs. 7–15 and B2 chs. 7/11.
 
 Core SQL includes exact numeric values, NULL/three-valued logic, Unicode/collation policy, timestamps, JSON, PK/FK/UNIQUE/CHECK/NOT NULL, defaults, generated identities, CRUD/upsert, joins, aggregation, ordering, prepared statements, transactions and explain plans. See the [compatibility matrix](compatibility-and-migration.md) for staged scope. A parser or PostgreSQL wire library is not a complete SQL engine.
+
+### Planning lifecycle and data operations
+
+E25 adds bounded SQL/JSON analyze jobs, weighted range sampling with coverage/version provenance, physical ordering/distribution/location properties, explicit exchanges and total parallel resource reservations. Plan caches separate semantic validity from cost quality: scope, policy, parameter types and dependency versions control reuse, while statistics/parameter skew guide budgeted reoptimization. Worker failure initially cancels the whole query attempt; partial fragment replay or adaptive restarts require a separately proven safe replay contract.
+
+E26 implements streaming COPY/CSV/JSON codecs, durable import batches, native bulk index construction and consistent export manifests. Transaction-scoped COPY retains transaction atomicity; a separate import job exposes partial commits and atomically records batch progress with its effects. Index files remain first-party and publish through the existing DDL/WAL/manifest/consensus path. E05 and E15 remain integration/certification gates.
+
+E27 introduces optional M5 materialized views using the same storage, jobs, snapshots and CDC. Start with full-refresh private generations and atomic publication, then a narrow single-table COUNT/SUM/AVG incremental subset. Publish freshness and policy dependencies; deny unsupported RLS configurations. Automatic substitution into fresh serializable SQL is disabled until semantic/security/snapshot equivalence is proved. See [the full contracts](relational-operations.md).
 
 ## Many connected clients
 

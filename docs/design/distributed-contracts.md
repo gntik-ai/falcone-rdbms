@@ -163,3 +163,20 @@ Every retry chain has an end-to-end deadline, bounded attempts, jitter and a sin
 | Restore then replay delayed old-cluster messages | New incarnation rejects stale authority and dedup/identity confusion | E12/E23 |
 
 Evidence includes exact binary/harness revisions, hardware and data manifests, workload seed, fault schedule, histories, checksums, response histograms, errors, budgets and known limits. A passing model or simulation does not replace real filesystem/device tests; a successful benchmark does not prove serializability.
+
+
+## Fourth-book refinements — 4 November 2026
+
+The [relational/data-operation contracts](relational-operations.md) extend this core without changing its authority or consistency model. E24 adds dependency/version checks and independently sharded sequence allocation authority; E25 makes distribution a physical plan property and bounds aggregate parallel resources; E26 records import progress atomically with batch effects and binds export coverage to existing consistent cuts. E27's optional derived generations use the same snapshot/CDC/retention rules.
+
+Specific additional distributed invariants:
+
+- Coarse/fine lock conflicts and escalation are modeled across logical table participants; a local shard lock does not protect the whole table, and no row-by-row central root-lock service is introduced.
+- Replicated commands carry resolved volatile/default/identity values and semantic versions. Followers cannot reevaluate those values from local clocks/RNGs or incompatible codecs.
+- Sequence ranges are reserved durably before use and fenced across reset/restore; cached allocation is not a commit-order service.
+- Distributed outer joins decide unmatched rows using complete required input, not a miss at one worker. Broadcast costs include every receiver's grant.
+- Query worker failure initially cancels the attempt. Partial streamed results, interactive transactions and unknown writes are not invisibly replayed; fragment retry is a separate protocol gate.
+- Statistics coverage accounts for lineage, unequal shard sizes and stale descriptors. Approximate estimates never establish data absence or replace semantic constraints.
+- Materialized views are P2 derived state with a consistent frontier and explicit security/freshness. They do not strengthen availability or replace current reads/constraints implicitly.
+
+The scenario matrix in the new contracts adds tests for these conditions. Existing range-split, decision-quorum, restore and S3 invariants continue to apply.

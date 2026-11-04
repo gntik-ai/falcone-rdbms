@@ -129,3 +129,12 @@ Links were consulted on 2 November 2026. “stable/current” pages are moving r
 | S41 | [Ongaro and Ousterhout, In Search of an Understandable Consensus Algorithm, extended version](https://raft.github.io/raft.pdf), §§5.4, 6–8; consulted 3 November 2026 to qualify consensus rules |
 
 The architecture, targets, roadmap and backlog in the accompanying documents are proposed Falcone designs derived from these observations, not claims that upstream systems implement the exact combination.
+
+
+## Fourth uploaded source — 4 November 2026
+
+**B4:** Silberschatz, Korth and Sudarshan, *Database System Concepts*, seventh edition, McGraw-Hill Education (2020), ISBN 978-0-07-802215-9. The [source review](database-system-concepts-review.md) records its uploaded-file checksum, scope/limits and all 26 supplied main chapters; online chapters 27–32 are listed but absent from the upload. This extends the B1–B3 review and does not redate historical upstream product observations.
+
+Primary contributions: §§4.2/4.4/4.5/4.7 for catalog objects, views, identities and constraints; §§16.3–16.6 for statistics, plan reuse, subquery/mutation semantics and materialized views; §18.3 for lock granularity; §§20.4/21.3/22.3–22.9 for scale, skew and distributed physical plans; §23.8.4 for deterministic replication; §§25.1/25.3 for bulk operations, tuning and semantic testing. B4's short consensus sketches remain subordinate to the precise S41 protocol and failure contracts already selected.
+
+E24–E27 and the [relational/data-operation contracts](relational-operations.md) are Falcone-specific conclusions from those sections. They preserve Rust/first-party persistence, geospatial and native managed S3 scope. The update does not add blockchain, a graph engine, arbitrary code execution, a second storage engine or a claim of full SQL/JSON/temporal compatibility.

@@ -13,6 +13,11 @@ SQL remains available for application queries and compatible schema operations; 
 | Databases/schemas/tables | `POST /v1/workspaces/{workspace}/databases/{database}/schema-plans` | Validate typed definitions and return a reviewable plan |
 | Schema plans | `POST /v1/schema-plans/{id}:apply` | Apply exactly the validated plan with version/precondition checks |
 | Columns/indexes/constraints | Typed changes within schema plans | Online state machine with progress and supported rollback boundary |
+| Views/sequences/named constraints | Typed schema-plan definitions plus dependency impact | E24: invoker/read-only view profile, identity allocation policy and validated constraint state |
+| Analyze/statistics | `POST /v1/.../analyze-jobs` | E25: scope/version/budgets, progress and authorized statistics inspection |
+| Imports/exports | `POST /v1/.../import-jobs`, `POST /v1/.../export-jobs` | E26: immutable source or snapshot identity, explicit batch/manifest semantics |
+| Plan diagnostics | `GET /v1/.../query-plans/{fingerprint}` | E25: redacted dependencies, estimates, grants, invalidation and actual counters |
+| Materialized views | Typed create/refresh/status/drop operations | P2/M5, capability-gated E27 generations, freshness and authorization |
 | Roles/policies/grants | `PUT /v1/.../policies/{id}` | Authorization and optimistic concurrency; audited changes |
 | Shards/placement | `POST /v1/.../placement-plans` | Preview capacity/locality impact; schedule bounded transfers |
 | Placement operations | `GET /v1/.../placement-operations/{id}` | Report split/move state, generation, affected-range pause, blockers, budgets and cancellation boundary |
@@ -76,6 +81,16 @@ Small supported DDL can be transactional. Long-running online jobs are not false
 Backfill uses the required consistent-cut/retention protocol from [distributed contracts](distributed-contracts.md#consistent-cuts-for-backup-backfill-and-streams). Versioned descriptor leases bound old-plan lifetimes; publication waits for required write behavior, and reclamation waits for old readers. Test DDL concurrently with shard cutover, backfill cancellation and writer upgrades. Runtime capability discovery reflects this exact supported intersection.
 
 JSON/gRPC administration and minimal recovery/diagnostic tooling are core. E09-S04's polished Falcone console and general-purpose CLI are P2 presentation work; postponing them does not postpone the APIs or operational runbooks.
+
+## Additional relational and operational API semantics
+
+The [relational contracts](relational-operations.md) define the above resources. They extend existing catalog/worker services, not a new service per resource. Sequence values are returned as exact integer strings over JSON; the API exposes generation, bounds, allocation-cache policy and gap semantics. Dependency previews are scoped and version-checked. Constraint descriptors expose immediate timing and validation state; unsupported timing/match modes fail before publication.
+
+Import jobs declare partially committed batches and return durable accepted/rejected/committed counters. Transaction-scoped COPY is a different atomic interface. Import source bindings/checksums, parser version and target schema are immutable after admission; resume reconciles unknown outcomes. Exports identify a consistent cut and verified manifest, and declare references-only versus object-complete behavior. All jobs consume the same admission and retention budgets.
+
+Analyze jobs never promise exact current counts. Statistics inspection may reveal sampled values and requires appropriate authorization. Plan-cache administration cannot bypass policy checks or pin a semantically invalid plan. Materialized-view requests remain unavailable until their M5 capability gate; stale results expose a frontier and cannot masquerade as current reads.
+
+REST/JSON transport does not imply full SQL/JSON support: SQL JSON null, missing-path results and SQL NULL remain separate values/behaviors under the certified type profile. The [compatibility matrix](compatibility-and-migration.md) records the boundary.
 
 ## Geospatial subset
 
